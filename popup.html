@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>Downloader</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      width: 300px;
+      padding: 10px;
+      text-align: center;
+    }
+
+    textarea {
+      width: 100%;
+      height: 80px;
+    }
+
+    input,
+    button,
+    select {
+      width: 100%;
+      margin: 5px 0;
+    }
+
+    h3 {
+      color: #4CAF50;
+      font-size: 20px;
+      margin-bottom: 10px;
+    }
+
+    img {
+      width: 50%;
+      margin-bottom: 5px;
+    }
+
+    label {
+      font-weight: bold;
+      margin-top: 10px;
+      display: block;
+      text-align: left;
+    }
+
+    .checkbox-group {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px;
+      max-height: 150px;
+      overflow-y: auto;
+      border: 1px solid #ccc;
+      padding: 5px;
+      font-size: 13px;
+      text-align: left;
+    }
+
+    .checkbox-item {
+      display: flex;
+      align-items: center;
+    }
+
+    .checkbox-item input[type="checkbox"] {
+      margin-right: 6px;
+    }
+  </style>
+</head>
+
+<body>
+  <img src="assets/logo.png" alt="Logo" />
+  <h3>Excel Downloader</h3>
+
+  <label for="urls">List of URLs:</label>
+  <textarea id="urls" placeholder="Satu URL per baris"></textarea>
+
+  <label for="periode">Periode:</label>
+  <input type="text" id="periode" placeholder="Contoh: Mei" />
+
+  <label>Pilih Kota (bisa lebih dari satu):</label>
+  <div style="text-align: left; margin-bottom: 5px;">
+    <button type="button" id="selectAll" style="width: 48%; margin-right: 2%;">Pilih Semua</button>
+    <button type="button" id="resetAll" style="width: 48%;">Reset</button>
+  </div>
+
+  <div class="checkbox-group" id="kotaCheckboxes">
+    <div class="checkbox-item"><input type="checkbox" value="01 - ACEH SELATAN"><span>01 - ACEH SELATAN</span></div>
+    <div class="checkbox-item"><input type="checkbox" value="02 - ACEH TENGGARA"><span>02 - ACEH TENGGARA</span></div>
+    <div class="checkbox-item"><input type="checkbox" value="03 - ACEH TIMUR"><span>03 - ACEH TIMUR</span></div>
+    <div class="checkbox-item"><input type="checkbox" value="04 - ACEH TENGAH"><span>04 - ACEH TENGAH</span></div>
+    <div class="checkbox-item"><input type="checkbox" value="05 - ACEH BARAT"><span>05 - ACEH BARAT</span></div>
+    <div class="checkbox-item"><input type="checkbox" value="06 - ACEH BESAR"><span>06 - ACEH BESAR</span></div>
+    <div class="checkbox-item"><input type="checkbox" value="07 - PIDIE"><span>07 - PIDIE</span></div>
+    <div class="checkbox-item"><input type="checkbox" value="08 - ACEH UTARA"><span>08 - ACEH UTARA</span></div>
+    <div class="checkbox-item"><input type="checkbox" value="09 - SIMEULUE"><span>09 - SIMEULUE</span></div>
+    <div class="checkbox-item"><input type="checkbox" value="10 - ACEH SINGKIL"><span>10 - ACEH SINGKIL</span></div>
+    <div class="checkbox-item"><input type="checkbox" value="11 - BIREUEN"><span>11 - BIREUEN</span></div>
+    <div class="checkbox-item"><input type="checkbox" value="12 - ACEH BARAT DAYA"><span>12 - ACEH BARAT DAYA</span>
+    </div>
+    <div class="checkbox-item"><input type="checkbox" value="13 - GAYO LUES"><span>13 - GAYO LUES</span></div>
+    <div class="checkbox-item"><input type="checkbox" value="14 - ACEH JAYA"><span>14 - ACEH JAYA</span></div>
+    <div class="checkbox-item"><input type="checkbox" value="15 - NAGAN RAYA"><span>15 - NAGAN RAYA</span></div>
+    <div class="checkbox-item"><input type="checkbox" value="16 - ACEH TAMIANG"><span>16 - ACEH TAMIANG</span></div>
+    <div class="checkbox-item"><input type="checkbox" value="17 - BENER MERIAH"><span>17 - BENER MERIAH</span></div>
+    <div class="checkbox-item"><input type="checkbox" value="18 - PIDIE JAYA"><span>18 - PIDIE JAYA</span></div>
+    <div class="checkbox-item"><input type="checkbox" value="71 - KOTA BANDA ACEH"><span>71 - KOTA BANDA ACEH</span>
+    </div>
+    <div class="checkbox-item"><input type="checkbox" value="72 - KOTA SABANG"><span>72 - KOTA SABANG</span></div>
+    <div class="checkbox-item"><input type="checkbox" value="73 - KOTA LHOKSEUMAWE"><span>73 - KOTA LHOKSEUMAWE</span>
+    </div>
+    <div class="checkbox-item"><input type="checkbox" value="74 - KOTA LANGSA"><span>74 - KOTA LANGSA</span></div>
+    <div class="checkbox-item"><input type="checkbox" value="75 - KOTA SUBULUSSALAM"><span>75 - KOTA SUBULUSSALAM</span>
+    </div>
+  </div>
+
+  <label for="kecamatan">Kecamatan:</label>
+  <input type="text" id="kecamatan" placeholder="Contoh: 01 - LHOONG" />
+
+  <label for="faskes">Faskes:</label>
+  <input type="text" id="faskes" placeholder="Contoh: PUSKESMAS LHOONG" />
+
+  <label for="reportType">Jenis Laporan:</label>
+  <select id="reportType">
+    <option value="Rekap">Rekap</option>
+    <option value="Detail">Detail</option>
+  </select>
+
+  <button id="run">Jalankan</button>
+
+  <script src="popup.js"></script>
+</body>
+
+</html>

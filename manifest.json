@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "SIGA Excel Downloader",
+  "version": "1.0",
+  "description": "Automate Excel download for multiple SIGA URLs",
+  "permissions": [
+    "scripting",
+    "tabs",
+    "activeTab",
+    "storage"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "48": "icons/icon48.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://newsiga-siga.bkkbn.go.id/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  }
+}
