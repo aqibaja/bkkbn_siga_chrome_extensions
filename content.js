@@ -105,6 +105,8 @@
   if (kota) {
     await wait(3000);
     await bukaDanPilihDenganKeyboard(2, kota);
+  } else {
+    console.warn("⚠️ Kota tidak dipilih, dilewati.");
   }
 
   if (kecamatan) {

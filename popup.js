@@ -13,6 +13,7 @@ document.getElementById("run").addEventListener("click", async () => {
 
   const kotaCheckboxes = document.querySelectorAll("#kotaCheckboxes input[type='checkbox']");
   const kotaList = [...kotaCheckboxes].filter(cb => cb.checked).map(cb => cb.value);
+  const finalKotaList = kotaList.length > 0 ? kotaList : [null];
 
   const faskes = document.getElementById("faskes").value;
   const kecamatan = document.getElementById("kecamatan").value;
@@ -21,7 +22,7 @@ document.getElementById("run").addEventListener("click", async () => {
   for (const url of urls) {
     const tab = await chrome.tabs.create({ url, active: false });
 
-    const queue = kotaList.map(kota => ({ url, kota }));
+    const queue = finalKotaList.map(kota => ({ url, kota }));
 
     await chrome.storage.local.set({
       [`auto_${tab.id}`]: {
