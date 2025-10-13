@@ -1,4 +1,41 @@
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+
+    // Automation via popup submit
+    if (message.action === "processData") {
+        // Ambil downloadQueue (array of {kota, url}) dari popup.js
+        const { downloadQueue, periode, selectedCities, kecamatan, jenisLaporan, faskes } = message.data;
+
+        // Group queue berdasarkan URL
+        const urlToQueueMap = {};
+        downloadQueue.forEach(item => {
+            if (!urlToQueueMap[item.url]) urlToQueueMap[item.url] = [];
+            urlToQueueMap[item.url].push(item);
+        });
+
+        // Untuk setiap url, buka satu tab dan simpan queue kota untuk url itu saja di tabnya
+        Object.keys(urlToQueueMap).forEach(url => {
+            chrome.tabs.create({ url: url, active: false }, tabObj => {
+                chrome.storage.local.set({
+                    [`auto_${tabObj.id}`]: {
+                        downloadQueue: urlToQueueMap[url],
+                        currentIndex: 0,
+                        periode,
+                        selectedCities,
+                        kecamatan,
+                        jenisLaporan,
+                        faskes
+                    }
+                });
+            });
+        });
+
+        sendResponse({ success: true });
+        return true;
+    }
+
+
+
+    // Get tab id from content/popup
     if (message.action === "getTabId") {
         sendResponse({ id: sender.tab.id });
     }
@@ -30,12 +67,17 @@ chrome.tabs.onRemoved.addListener(async (tabId, removeInfo) => {
             "downloadQueue",
             "currentIndex",
             "periode",
+            "tahun",
+            "selectedCities",
             "kecamatan",
             "faskes",
-            "reportType"
+            "jenisLaporan"
         ]);
+        chrome.storage.local.remove([key]);
     }
 
     // Hapus juga data spesifik tab jika ada
     chrome.storage.local.remove([key]);
 });
+
+// Tambahkan handler custom/lanjutan sesuai case lanjut
