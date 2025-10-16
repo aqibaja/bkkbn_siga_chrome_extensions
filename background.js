@@ -3,7 +3,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // Automation via popup submit
     if (message.action === "processData") {
         // Ambil downloadQueue (array of {kota, url}) dari popup.js
-        const { downloadQueue, periode, selectedCities, kecamatan, jenisLaporan, faskes } = message.data;
+        const { downloadQueue, periode, selectedCities, kecamatan, jenisLaporan, faskes, desa, rw, sasaran } = message.data;
 
         // Group queue berdasarkan URL
         const urlToQueueMap = {};
@@ -23,7 +23,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                         selectedCities,
                         kecamatan,
                         jenisLaporan,
-                        faskes
+                        faskes,
+                        desa,
+                        rw,
+                        sasaran
                     }
                 });
             });
@@ -71,6 +74,9 @@ chrome.tabs.onRemoved.addListener(async (tabId, removeInfo) => {
             "selectedCities",
             "kecamatan",
             "faskes",
+            "desa",
+            "rw",
+            "sasaran",
             "jenisLaporan"
         ]);
         chrome.storage.local.remove([key]);

@@ -136,7 +136,13 @@ function setupFormSubmit(formId, tabName) {
       data.faskes = document.getElementById('faskes-bulanan').value;
       const tahun = document.getElementById('tahun').value;
       data.tahun = tahun;
+    } else {
+      data.desa = document.getElementById('desa-tahunan').value;
+      data.rw = document.getElementById('rw-tahunan').value;
+      data.sasaran = document.getElementById('sasaran-tahunan').value;
     }
+
+    console.log('Data to be sent:', data);
     chrome.runtime.sendMessage({ action: 'processData', data },
       (response) => {
         if (response && response.success) {
