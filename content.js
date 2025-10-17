@@ -17,6 +17,11 @@
     return document.querySelectorAll('.css-yk16xz-control')[fallbackIndex] || null;
   }
 
+  // Buat hash unik dari URL (bisa pakai base64 atau hanya ambil bagian unik URL)
+  function getUrlHash(url) {
+    return btoa(url); // hash sederhana
+  }
+
   // Pilih dropdown tertentu dan select targetTextRaw
   async function bukaDanPilihPadaDropdown(control, targetTextRaw) {
     if (!control) {
@@ -54,6 +59,27 @@
     }
     // PATCH: Stop automation dan Tampilkan ERROR jika tidak ketemu
     alert(`❌ Gagal menemukan opsi/fuzzy "${targetTextRaw}". Proses download otomatis dibatalkan.`);
+    // Simpan status fail jika dropdown gagal
+
+    chrome.storage.local.get([`tabdownload_${getUrlHash(url)}`], function (result) {
+      let existing = result[`tabdownload_${getUrlHash(url)}`] || {
+        url: url,
+        status: "downloading",
+        totalFiles: downloadQueue.length, // total kota/file untuk URL ini
+        filesCompleted: 0,
+        fileAkhir: ""
+      };
+
+      // Update progress
+      existing.filesCompleted = currentIndex + 1;
+      existing.fileAkhir = kota || "Provinsi";
+      if (currentIndex >= downloadQueue.length - 1) existing.status = "fail";
+
+      chrome.storage.local.set({
+        [`tabdownload_${getUrlHash(url)}`]: existing
+      });
+      chrome.runtime.sendMessage({ action: "refresh_download_status" });
+    });
     throw new Error(`❌ Tidak ketemu opsi fuzzy untuk "${targetTextRaw}"`);
   }
 
@@ -63,7 +89,7 @@
   // Fitur lama: Handle popup Rekap/Detail
   async function handlePopup(reportType) {
     let tries = 0;
-    const maxTries = 5;
+    const maxTries = 3;
     while (tries < maxTries) {
       const popUp = document.querySelector('.swal2-title');
       if (popUp) {
@@ -72,18 +98,98 @@
         if (reportType === "Rekap" && rekapButton) {
           rekapButton.click();
           console.log("✅ Klik tombol Rekap");
+          // Simpan status download untuk tab Download Progress
+          chrome.storage.local.get([`tabdownload_${getUrlHash(url)}`], function (result) {
+            let existing = result[`tabdownload_${getUrlHash(url)}`] || {
+              url: url,
+              status: "downloading",
+              totalFiles: downloadQueue.length, // total kota/file untuk URL ini
+              filesCompleted: 0,
+              fileAkhir: ""
+            };
+
+            // Update progress
+            existing.filesCompleted = currentIndex + 1;
+            existing.fileAkhir = kota || "Provinsi";
+            if (currentIndex >= downloadQueue.length - 1) existing.status = "success";
+
+            chrome.storage.local.set({
+              [`tabdownload_${getUrlHash(url)}`]: existing
+            });
+            chrome.runtime.sendMessage({ action: "refresh_download_status" });
+          });
         } else if (reportType === "Detail" && detailButton) {
           detailButton.click();
           console.log("✅ Klik tombol Detail");
+          // Simpan status download untuk tab Download Progress
+          chrome.storage.local.get([`tabdownload_${getUrlHash(url)}`], function (result) {
+            let existing = result[`tabdownload_${getUrlHash(url)}`] || {
+              url: url,
+              status: "downloading",
+              totalFiles: downloadQueue.length, // total kota/file untuk URL ini
+              filesCompleted: 0,
+              fileAkhir: ""
+            };
+
+            // Update progress
+            existing.filesCompleted = currentIndex + 1;
+            existing.fileAkhir = kota || "Provinsi";
+            if (currentIndex >= downloadQueue.length - 1) existing.status = "success";
+
+            chrome.storage.local.set({
+              [`tabdownload_${getUrlHash(url)}`]: existing
+            });
+            chrome.runtime.sendMessage({ action: "refresh_download_status" });
+          });
         } else {
           alert("❌ Jenis laporan tidak valid atau tombol Rekap/Detail tidak ditemukan. Proses dibatalkan.");
           console.error("❌ Tombol Rekap atau Detail tidak ditemukan");
+          // Simpan status download untuk tab Download Progress
+          chrome.storage.local.get([`tabdownload_${getUrlHash(url)}`], function (result) {
+            let existing = result[`tabdownload_${getUrlHash(url)}`] || {
+              url: url,
+              status: "downloading",
+              totalFiles: downloadQueue.length, // total kota/file untuk URL ini
+              filesCompleted: 0,
+              fileAkhir: ""
+            };
+
+            // Update progress
+            existing.filesCompleted = currentIndex + 1;
+            existing.fileAkhir = kota || "Provinsi";
+            if (currentIndex >= downloadQueue.length - 1) existing.status = "fail";
+
+            chrome.storage.local.set({
+              [`tabdownload_${getUrlHash(url)}`]: existing
+            });
+            chrome.runtime.sendMessage({ action: "refresh_download_status" });
+          });
         }
         return;
       }
       await wait(500);
       tries++;
     }
+    // Simpan status download untuk tab Download Progress
+    chrome.storage.local.get([`tabdownload_${getUrlHash(url)}`], function (result) {
+      let existing = result[`tabdownload_${getUrlHash(url)}`] || {
+        url: url,
+        status: "downloading",
+        totalFiles: downloadQueue.length, // total kota/file untuk URL ini
+        filesCompleted: 0,
+        fileAkhir: ""
+      };
+
+      // Update progress
+      existing.filesCompleted = currentIndex + 1;
+      existing.fileAkhir = kota || "Provinsi";
+      if (currentIndex >= downloadQueue.length - 1) existing.status = "success";
+
+      chrome.storage.local.set({
+        [`tabdownload_${getUrlHash(url)}`]: existing
+      });
+      chrome.runtime.sendMessage({ action: "refresh_download_status" });
+    });
     console.warn("⚠️ Popup tidak muncul setelah menunggu");
   }
 

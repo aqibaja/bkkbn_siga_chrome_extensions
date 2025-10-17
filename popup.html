@@ -12,9 +12,10 @@
     <img src="assets/logo.png" alt="Logo" class="logo-center"
       style="max-width:250px; margin-top:0px; margin-bottom:10px;">
     <!-- <h3>SIGA Smart Downloader</h3> -->
-    <div class="tabs">
+    <div class="tabs" style="grid-template-columns: 1fr 1fr 1fr;">
       <button class="tab-button active" data-tab="tahunan">Tahunan</button>
       <button class="tab-button" data-tab="bulanan">Bulanan</button>
+      <button class="tab-button" data-tab="download">Download</button>
     </div>
 
     <!-- Tahunan Tab Content -->
@@ -105,6 +106,11 @@
         </div>
         <button type="submit" class="btn-primary">Jalankan</button>
       </form>
+    </div>
+    <!-- Tab Download Progress -->
+    <div id="download-content" class="tab-content">
+      <h2 style="margin-bottom: 20px; font-size: 22px;">Download Progress</h2>
+      <div id="download-progress-list"></div>
     </div>
   </div>
   <script src="popup.js"></script>

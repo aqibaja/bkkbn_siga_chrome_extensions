@@ -1,5 +1,55 @@
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
+    /* if (message.action === "processData") {
+        const { downloadQueue, periode, selectedCities, kecamatan, jenisLaporan, faskes, desa, rw, sasaran } = message.data;
+        // Group queue berdasarkan URL
+        console.log("DOWNLOAD QUEUE:", downloadQueue);
+        const urlToQueueMap = {};
+        downloadQueue.forEach(item => {
+            if (!urlToQueueMap[item.url]) urlToQueueMap[item.url] = [];
+            urlToQueueMap[item.url].push(item);
+        });
+
+        Object.keys(urlToQueueMap).forEach((url, urlIdx) => {
+            const queue = urlToQueueMap[url];
+
+            // Inisialisasi progress sekali per URL
+            const key = `tabdownload_${urlIdx}`;
+            chrome.storage.local.set({
+                [key]: {
+                    url,
+                    status: "downloading",
+                    totalFiles: queue.length,
+                    filesCompleted: 0,
+                    fileAkhir: "",
+                    urlIndex: urlIdx
+                }
+            });
+
+            // Buka tab untuk proses
+            chrome.tabs.create({ url, active: false }, tabObj => {
+                chrome.storage.local.set({
+                    [`auto_${tabObj.id}`]: {
+                        downloadQueue: queue,
+                        currentIndex: 0,
+                        periode,
+                        selectedCities,
+                        kecamatan,
+                        jenisLaporan,
+                        faskes,
+                        desa,
+                        rw,
+                        sasaran,
+                        urlIndex: urlIdx
+                    }
+                });
+            });
+        });
+
+        sendResponse({ success: true });
+        return true;
+    } */
+
     // Automation via popup submit
     if (message.action === "processData") {
         // Ambil downloadQueue (array of {kota, url}) dari popup.js
@@ -11,6 +61,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             if (!urlToQueueMap[item.url]) urlToQueueMap[item.url] = [];
             urlToQueueMap[item.url].push(item);
         });
+
+        console.log("Grouped URL to Queue Map:", urlToQueueMap);
+
 
         // Untuk setiap url, buka satu tab dan simpan queue kota untuk url itu saja di tabnya
         Object.keys(urlToQueueMap).forEach(url => {

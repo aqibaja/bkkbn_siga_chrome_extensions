@@ -10,7 +10,7 @@ body {
     color: #030213;
     background-color: #ffffff;
     width: 550px;
-    min-height: 400px;
+    min-height: 600px;
 }
 
 .container {
@@ -20,7 +20,8 @@ body {
 /* Tabs */
 .tabs {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr 1fr 1fr;
+    /* 3 kolom untuk 3 tab */
     gap: 0;
     background-color: #f3f3f5;
     border-radius: 10px;
@@ -226,4 +227,46 @@ h3 {
 
 ::-webkit-scrollbar-thumb:hover {
     background: #717182;
+}
+
+/* Download Progress Styles */
+.download-section {
+    margin-bottom: 28px;
+    padding-bottom: 12px;
+    border-bottom: 4px solid #eee;
+}
+
+.progress-url {
+    font-size: 18px;
+    font-weight: bold;
+    margin-bottom: 4px;
+}
+
+.progress-status {
+    font-size: 16px;
+    font-weight: bold;
+    margin-top: 4px;
+}
+
+.progress-status.success {
+    color: #18af34;
+}
+
+.progress-status.fail {
+    color: #e12121;
+}
+
+.progress-status.downloading {
+    color: #484dde;
+}
+
+.progress-file {
+    font-size: 16px;
+    margin-top: 3px;
+    color: #222;
+}
+
+.divider {
+    border-top: 3px solid #f5f5f5;
+    margin: 18px 0;
 }

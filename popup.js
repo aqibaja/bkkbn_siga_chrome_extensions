@@ -69,6 +69,122 @@ function setupSelectAll(buttonId, tabName) {
     checkboxes.forEach(checkbox => { checkbox.checked = true; });
   });
 }
+
+// Fungsi untuk render Download Tab
+function renderDownloadTab() {
+
+  chrome.storage.local.get(null, function (data) {
+    console.log("Rendering entries:", Object.keys(data)
+      .filter(k => k.startsWith('tabdownload_')));
+    const entries = Object.keys(data)
+      .filter(k => k.startsWith('tabdownload_'))
+      .map(k => data[k])
+      .sort((a, b) => a.urlIndex - b.urlIndex);
+
+    let blocks = entries.map((item, i) => {
+      let statClass = "downloading", statText = "Progress";
+      if (item.status === "success") { statClass = "success"; statText = "Berhasil"; }
+      if (item.status === "fail") { statClass = "fail"; statText = "GAGAL"; }
+      if (item.status === "progress") { statClass = "downloading"; statText = "Progress"; }
+
+      let progress = item.totalFiles > 0 ? Math.round((item.filesCompleted / item.totalFiles) * 100) : 0;
+      let fileTerakhir = item.fileAkhir ? `file terakhir : ${item.fileAkhir}` : '';
+
+      // Progress bar dengan warna dinamis
+      let progressColor = statClass === "success" ? "#18af34" : statClass === "fail" ? "#e12121" : "#484dde";
+
+      return `
+        <div class="download-section">
+          <div class="progress-url">URL ${i + 1}: ${item.url || "-"}</div>
+          
+          <!-- Progress Bar -->
+          <div style="background:#eee; border-radius:8px; height:20px; margin:8px 0; position:relative; overflow:hidden;">
+            <div style="background:${progressColor}; height:100%; width:${progress}%; transition: width 0.3s;"></div>
+            <div style="position:absolute; top:0; left:0; right:0; bottom:0; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:bold; color:#000;">${progress}%</div>
+          </div>
+          
+          <div class="progress-status ${statClass}">Status: ${statText}</div>
+          <div class="progress-file">${fileTerakhir}</div>
+        </div>
+      `;
+    });
+    document.getElementById("download-progress-list").innerHTML = blocks.length > 0 ? blocks.join("\n") : "<p>Tidak ada proses download.</p>";
+  });
+}
+
+function resetDownloadProgress(callback) {
+  chrome.storage.local.get(null, function (data) {
+    let keysToDelete = [];
+    Object.keys(data).forEach(key => {
+      if (key.startsWith('tabdownload_')) keysToDelete.push(key);
+    });
+    chrome.storage.local.remove(keysToDelete, () => {
+      // Kosongkan UI
+      document.getElementById('download-progress-list').innerHTML = "<p>Memulai proses download...</p>";
+      if (callback) callback();
+    });
+  });
+}
+
+function switchToDownloadTab() {
+  const tabButtons = document.querySelectorAll('.tab-button');
+  const tabContents = document.querySelectorAll('.tab-content');
+
+  // Set semua tab jadi inactive
+  tabButtons.forEach(btn => btn.classList.remove('active'));
+  tabContents.forEach(content => content.classList.remove('active'));
+
+  // Aktifkan tab Download
+  document.querySelector('[data-tab="download"]').classList.add('active');
+  document.getElementById('download-content').classList.add('active');
+
+  // Render progress awal
+  renderDownloadTab();
+}
+
+function initializeDownloadProgress(downloadQueue) {
+  // Group queue berdasarkan URL untuk mendapatkan unique URLs
+  const urlToQueueMap = {};
+  downloadQueue.forEach(item => {
+    if (!urlToQueueMap[item.url]) urlToQueueMap[item.url] = [];
+    urlToQueueMap[item.url].push(item);
+  });
+
+  // Untuk setiap URL, buat initial progress state
+  Object.keys(urlToQueueMap).forEach(url => {
+    const queue = urlToQueueMap[url];
+    const urlHash = btoa(url); // Hash untuk key unik
+    const firstFile = queue[0].kota || "Memulai...";
+
+    chrome.storage.local.set({
+      [`tabdownload_${urlHash}`]: {
+        url: url,
+        status: "progress", // Status awal
+        totalFiles: queue.length,
+        filesCompleted: 0,
+        fileAkhir: firstFile
+      }
+    }, () => {
+      // Refresh UI setelah inisialisasi
+      renderDownloadTab();
+    });
+  });
+}
+
+// Tab switching untuk tab Download
+tabButtons.forEach(button => {
+  button.addEventListener('click', () => {
+    const tabName = button.getAttribute('data-tab');
+    tabButtons.forEach(btn => btn.classList.remove('active'));
+    tabContents.forEach(content => content.classList.remove('active'));
+    button.classList.add('active');
+    document.getElementById(`${tabName}-content`).classList.add('active');
+
+    // Jika tab download diklik, render progress
+    if (tabName === 'download') renderDownloadTab();
+  });
+});
+
 setupSelectAll('select-all-tahunan', 'tahunan');
 setupSelectAll('select-all-bulanan', 'bulanan');
 
@@ -130,7 +246,8 @@ function setupFormSubmit(formId, tabName) {
       kecamatan,
       jenisLaporan,
       selectedCities,
-      downloadQueue: queue // pass langsung queue!
+      downloadQueue: queue, // pass langsung queue!
+      urls
     };
     if (tabName === 'bulanan') {
       data.faskes = document.getElementById('faskes-bulanan').value;
@@ -143,15 +260,30 @@ function setupFormSubmit(formId, tabName) {
     }
 
     console.log('Data to be sent:', data);
-    chrome.runtime.sendMessage({ action: 'processData', data },
-      (response) => {
-        if (response && response.success) {
-          alert('Proses otomatis berhasil!');
-        } else {
-          alert('Proses gagal atau tidak ada response.');
-        }
-      });
+    // Reset progress lama dan pindah ke tab Download
+    resetDownloadProgress(() => {
+      switchToDownloadTab();
+
+      // Inisialisasi progress awal per URL dengan 0% dan file pertama
+      initializeDownloadProgress(queue);
+
+      // Kirim pesan ke background untuk mulai proses
+      chrome.runtime.sendMessage({ action: 'processData', data },
+        (response) => {
+          if (response && response.success) {
+            console.log('Proses download dimulai...');
+          } else {
+            alert('Proses gagal atau tidak ada response.');
+          }
+        });
+    });
   });
 }
 setupFormSubmit('tahunan-form', 'tahunan');
 setupFormSubmit('bulanan-form', 'bulanan');
+
+
+// Listener untuk auto-refresh download tab
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg.action === "refresh_download_status") renderDownloadTab();
+});
