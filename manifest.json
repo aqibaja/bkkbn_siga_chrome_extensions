@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "SIGA Excel Downloader",
+  "name": "SIGA Smart Downloader",
   "version": "1.0",
   "description": "Automate Excel download for multiple SIGA URLs",
   "permissions": [

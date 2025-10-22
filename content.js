@@ -2,6 +2,7 @@
   // Helper: Wait beberapa ms
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+
   // Fungsi: Cari dropdown berdasarkan label di parent/teks sekita
 
   function findDropdownHybrid(labelText, fallbackIndex = 0) {
@@ -22,25 +23,129 @@
     return btoa(url); // hash sederhana
   }
 
-  // Pilih dropdown tertentu dan select targetTextRaw
+  // Helper delay
+
+  // Fungsi untuk klik robust di dropdown
+  function klikDropdown(control) {
+    try {
+      control.scrollIntoView({ behavior: "smooth" });
+      control.focus();
+      control.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      control.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+      control.click();
+    } catch (e) {
+      console.error("Gagal klik dropdown:", e);
+    }
+  }
+
+  // Fungsi observer + fallback polling untuk opsi dropdown
+  async function waitForDropdownOptions(
+    selectorOpt = '.css-yt9ioa-option, .css-1n7v3ny-option, .css-9gakcf-option',
+    timeout = 12000
+  ) {
+    return new Promise((resolve, reject) => {
+      let found = false;
+      const observer = new MutationObserver(() => {
+        const options = document.querySelectorAll(selectorOpt);
+        if (options.length > 0) {
+          found = true;
+          observer.disconnect();
+          resolve(options);
+        }
+      });
+
+      observer.observe(document.body, { childList: true, subtree: true });
+
+      setTimeout(() => {
+        if (!found) {
+          observer.disconnect();
+          reject(new Error('❌ Dropdown options tidak muncul dalam waktu cukup.'));
+        }
+      }, timeout);
+    });
+  }
+
+  async function pollingDropdownOptions(
+    selectorOpt = '.css-yt9ioa-option, .css-1n7v3ny-option, .css-9gakcf-option',
+    timeout = 12000,
+    interval = 200
+  ) {
+    const start = Date.now();
+    while (Date.now() - start < timeout) {
+      let opts = document.querySelectorAll(selectorOpt);
+      if (opts.length > 0) return opts;
+      await wait(interval);
+    }
+    throw new Error("❌ Dropdown option tidak muncul dalam waktu cukup.");
+  }
+
+  // Fungsi utama end-to-end
   async function bukaDanPilihPadaDropdown(control, targetTextRaw) {
+    if (!control) {
+      alert("❌ Dropdown tidak ditemukan! Proses dibatalkan.");
+      throw new Error("❌ Dropdown tidak ditemukan.");
+    }
+
+    klikDropdown(control);
+    await wait(400); // waktu animasi dropdown jika ada
+
+    // Coba MutationObserver dulu
+    let options;
+    try {
+      options = await waitForDropdownOptions();
+    } catch {
+      try {
+        // Fallback polling jika observer gagal
+        options = await pollingDropdownOptions();
+      } catch (e) {
+        alert(e.message);
+        throw e;
+      }
+    }
+
+    // Cek dan klik opsi yang cocok (fuzzy search & log jika tidak ketemu)
+    const userValue = targetTextRaw.trim().replace(/\u2013|\u2014/g, '-').toLowerCase();
+    let found = false;
+    for (const opt of options) {
+      if (opt.textContent.trim().toLowerCase().includes(userValue)) {
+        opt.scrollIntoView({ behavior: "smooth" });
+        opt.click();
+        found = true;
+        break;
+      }
+    }
+
+    if (!found) {
+      // Debug log opsi untuk pemecahan masalah
+      const opsiList = Array.from(options).map(o => o.textContent.trim());
+      alert(`❌ Opsi "${targetTextRaw}" tidak ditemukan!\nDaftar opsi: ${opsiList.join(", ")}`);
+      throw new Error(`❌ Opsi "${targetTextRaw}" tidak ditemukan.`);
+    }
+    await wait(200);
+    // lanjut ke proses berikutnya
+  }
+
+
+  // Pilih dropdown tertentu dan select targetTextRaw
+  async function bukaDanPilihPadaDropdown(control, targetTextRaw, url, kota, currentIndex, downloadQueue) {
     if (!control) {
       alert("❌ Dropdown tidak ditemukan! Proses dibatalkan.");
       throw new Error("❌ Dropdown tidak ditemukan");
     }
-    const userValue = targetTextRaw.trim().replace(/\u2013|\u2014/g, '-').toLowerCase();
 
+    const userValue = targetTextRaw.trim().replace(/\u2013|\u2014/g, '-').toLowerCase();
     control.scrollIntoView();
     control.click();
     await wait(250);
-
     control.focus();
     control.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "ArrowDown", code: "ArrowDown" }));
 
+    // Poll & fuzzy match opsi dropdown
     const maxTries = 30;
     let tries = 0;
+    let opsi = null;
     while (tries < maxTries) {
-      const opsi = [...document.querySelectorAll('.css-yt9ioa-option, .css-1n7v3ny-option, .css-9gakcf-option')].find(el => {
+      opsi = [...document.querySelectorAll('.css-yt9ioa-option, .css-1n7v3ny-option, .css-9gakcf-option')].find(el => {
         const textOption = el.textContent.trim().replace(/\u2013|\u2014/g, '-').toLowerCase();
         return (
           textOption === userValue ||
@@ -48,24 +153,27 @@
           userValue.split(' ').every(token => textOption.includes(token))
         );
       });
-
-      if (opsi) {
-        opsi.click();
-        console.log(`✅ Berhasil pilih (fuzzy match) "${targetTextRaw}" => "${opsi.textContent.trim()}"`);
-        return true;
-      }
+      if (opsi) break;
       await wait(100);
       tries++;
     }
-    // PATCH: Stop automation dan Tampilkan ERROR jika tidak ketemu
-    alert(`❌ Gagal menemukan opsi/fuzzy "${targetTextRaw}". Proses download otomatis dibatalkan.`);
-    // Simpan status fail jika dropdown gagal
 
+    if (opsi) {
+      opsi.click();
+      console.log(`✅ Berhasil pilih (fuzzy match) "${targetTextRaw}" => "${opsi.textContent.trim()}"`);
+      await wait(200); // waktu buffer
+      return true;
+    }
+
+    // PATCH: Jika gagal, update status ke storage dan alert
+    alert(`❌ Gagal menemukan opsi/fuzzy "${targetTextRaw}". Proses download otomatis dibatalkan.`);
+
+    // Ambil & update status download progress ke chrome.storage.local
     chrome.storage.local.get([`tabdownload_${getUrlHash(url)}`], function (result) {
       let existing = result[`tabdownload_${getUrlHash(url)}`] || {
         url: url,
         status: "downloading",
-        totalFiles: downloadQueue.length, // total kota/file untuk URL ini
+        totalFiles: downloadQueue.length,
         filesCompleted: 0,
         fileAkhir: ""
       };
@@ -80,8 +188,10 @@
       });
       chrome.runtime.sendMessage({ action: "refresh_download_status" });
     });
+
     throw new Error(`❌ Tidak ketemu opsi fuzzy untuk "${targetTextRaw}"`);
   }
+
 
 
   // === HANDLE POPUP, STORAGE, DLL (kode lama tetap) ===
@@ -89,13 +199,20 @@
   // Fitur lama: Handle popup Rekap/Detail
   async function handlePopup(reportType) {
     let tries = 0;
-    const maxTries = 3;
+    const maxTries = 5;
     while (tries < maxTries) {
       const popUp = document.querySelector('.swal2-title');
       if (popUp) {
+        console.log("✅ Popup check attempt:", tries + 1);
         const rekapButton = [...document.querySelectorAll("button")].find(btn => btn.textContent.includes("Rekap"));
         const detailButton = [...document.querySelectorAll("button")].find(btn => btn.textContent.includes("Detail"));
-        if (reportType === "Rekap" && rekapButton) {
+        console.log("🔍 Found buttons:", {
+          rekap: !!rekapButton,
+          detail: !!detailButton
+        });
+        console.log("🔍 Report type requested:", reportType);
+        console.log(reportType.toLowerCase() === "rekap" && rekapButton);
+        if (reportType.toLowerCase() === "rekap" && rekapButton) {
           rekapButton.click();
           console.log("✅ Klik tombol Rekap");
           // Simpan status download untuk tab Download Progress
@@ -118,7 +235,7 @@
             });
             chrome.runtime.sendMessage({ action: "refresh_download_status" });
           });
-        } else if (reportType === "Detail" && detailButton) {
+        } else if (reportType.toLowerCase() === "detail" && detailButton) {
           detailButton.click();
           console.log("✅ Klik tombol Detail");
           // Simpan status download untuk tab Download Progress
@@ -170,27 +287,10 @@
       await wait(500);
       tries++;
     }
-    // Simpan status download untuk tab Download Progress
-    chrome.storage.local.get([`tabdownload_${getUrlHash(url)}`], function (result) {
-      let existing = result[`tabdownload_${getUrlHash(url)}`] || {
-        url: url,
-        status: "downloading",
-        totalFiles: downloadQueue.length, // total kota/file untuk URL ini
-        filesCompleted: 0,
-        fileAkhir: ""
-      };
-
-      // Update progress
-      existing.filesCompleted = currentIndex + 1;
-      existing.fileAkhir = kota || "Provinsi";
-      if (currentIndex >= downloadQueue.length - 1) existing.status = "success";
-
-      chrome.storage.local.set({
-        [`tabdownload_${getUrlHash(url)}`]: existing
-      });
-      chrome.runtime.sendMessage({ action: "refresh_download_status" });
-    });
-    console.warn("⚠️ Popup tidak muncul setelah menunggu");
+    if (tries >= maxTries) {
+      alert("⚠️ Popup tidak muncul setelah menunggu. Proses dibatalkan.");
+      console.warn("⚠️ Popup tidak muncul setelah menunggu");
+    }
   }
 
   // Automation: Ambil data dari storage untuk tab ini
@@ -206,7 +306,7 @@
     return;
   }
 
-  const { downloadQueue, currentIndex = 0, periode, selectedCities, kecamatan, faskes, jenisLaporan, reportType, tahun, desa, rw, sasaran } = storage;
+  const { downloadQueue, currentIndex = 0, periode, selectedCities, kecamatan, faskes, jenisLaporan, tahun, desa, rw, sasaran } = storage;
 
   if (!downloadQueue || currentIndex >= downloadQueue.length) {
     console.log("✅ Semua download selesai untuk tab ini");
@@ -226,6 +326,7 @@
   else console.error('❌ Dropdown Periode tidak ditemukan');
 
   // Pilih Tahun (jika ada, misal di mode bulanan)
+  await wait(1000);
   if (tahun) {
     const tahunDropdown = findDropdownHybrid("Tahun", 1);
     if (tahunDropdown) await bukaDanPilihPadaDropdown(tahunDropdown, tahun);
@@ -233,6 +334,7 @@
   }
 
   // Pilih Kota/Kab
+  await wait(1000);
   if (kota) {
     const kotaDropdown = findDropdownHybrid("Kab/Kota", isTahunan ? 1 : 2);
     const result = await bukaDanPilihPadaDropdown(kotaDropdown, kota);
@@ -243,6 +345,7 @@
   }
 
   // Pilih Kecamatan
+  await wait(1000);
   if (kecamatan) {
     const kecDropdown = findDropdownHybrid("Kecamatan", isTahunan ? 2 : 3);
     const result = await bukaDanPilihPadaDropdown(kecDropdown, kecamatan);
@@ -258,7 +361,7 @@
   //   if (result === false) return; // Jangan lanjut
   //   await wait(1200);
   // }
-
+  await wait(1000);
   if (desa) {
     const desaDropdown = findDropdownHybrid("Desa/Kel", isTahunan ? 3 : 4);
     if (desaDropdown) {
@@ -280,6 +383,7 @@
     }
   }
   // Pilih RW (tahunan, jika ada)
+  await wait(1000);
   if (rw) {
     const rwDropdown = findDropdownHybrid("RW", isTahunan ? 4 : 5);
     const result = await bukaDanPilihPadaDropdown(rwDropdown, rw);
@@ -287,6 +391,7 @@
     await wait(1200);
   }
   // Pilih Sasaran (tahunan, jika ada)
+  await wait(1000);
   if (sasaran) {
     const sasaranDropdown = findDropdownHybrid("Kelompok Sasaran", isTahunan ? 5 : 6);
     const result = await bukaDanPilihPadaDropdown(sasaranDropdown, sasaran);
@@ -295,6 +400,7 @@
   }
 
   // Pilih Faskes (bulanan, jika ada)
+  await wait(1000);
   if (faskes) {
     const faskesDropdown = findDropdownHybrid("Faskes", 4);
     if (faskesDropdown) await bukaDanPilihPadaDropdown(faskesDropdown, faskes);
@@ -312,7 +418,31 @@
     button.click();
     console.log("✅ Klik tombol Cetak Excel");
     await wait(900);
-    await handlePopup(jenisLaporan || reportType);
+    if (jenisLaporan) {
+      await handlePopup(jenisLaporan);
+    } else {
+      // Simpan status download untuk tab Download Progress
+      chrome.storage.local.get([`tabdownload_${getUrlHash(url)}`], function (result) {
+        let existing = result[`tabdownload_${getUrlHash(url)}`] || {
+          url: url,
+          status: "downloading",
+          totalFiles: downloadQueue.length, // total kota/file untuk URL ini
+          filesCompleted: 0,
+          fileAkhir: ""
+        };
+
+        // Update progress
+        existing.filesCompleted = currentIndex + 1;
+        existing.fileAkhir = kota || "Provinsi";
+        if (currentIndex >= downloadQueue.length - 1) existing.status = "success";
+
+        chrome.storage.local.set({
+          [`tabdownload_${getUrlHash(url)}`]: existing
+        });
+        chrome.runtime.sendMessage({ action: "refresh_download_status" });
+      });
+
+    }
   } else {
     console.error("❌ Tombol Cetak Excel tidak ditemukan");
   }
