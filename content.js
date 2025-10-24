@@ -20,7 +20,19 @@
 
   // Buat hash unik dari URL (bisa pakai base64 atau hanya ambil bagian unik URL)
   function getUrlHash(url) {
-    return btoa(url); // hash sederhana
+    try {
+      // Encode URL ke base64 yang aman untuk Unicode
+      return btoa(encodeURIComponent(url).replace(/%([0-9A-F]{2})/g, (match, p1) => {
+        return String.fromCharCode('0x' + p1);
+      }));
+    } catch (e) {
+      console.error('Error encoding URL:', e);
+      // Fallback: gunakan hash sederhana dari URL
+      return url.split('').reduce((a, b) => {
+        a = ((a << 5) - a) + b.charCodeAt(0);
+        return a & a;
+      }, 0).toString();
+    }
   }
 
   // Helper delay

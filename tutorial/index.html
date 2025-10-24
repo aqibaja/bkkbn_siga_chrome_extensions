@@ -1,0 +1,2248 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bimbingan Teknis SIGA Smart Downloader</title>
+    <style>
+        :root {
+            /* Design System Colors */
+            --color-primary: #0052CC;
+            --color-secondary: #0066FF;
+            --color-success: #00B894;
+            --color-warning: #E17055;
+            --color-danger: #D63031;
+            --color-text-dark: #2D3436;
+            --color-text-light: #FFFFFF;
+            --color-bg-light: #F5F7FA;
+            --color-border: #DFE6E9;
+            --color-surface: #FFFFFF;
+
+            /* Spacing */
+            --space-4: 4px;
+            --space-8: 8px;
+            --space-12: 12px;
+            --space-16: 16px;
+            --space-20: 20px;
+            --space-24: 24px;
+            --space-32: 32px;
+
+            /* Typography */
+            --font-size-sm: 14px;
+            --font-size-base: 16px;
+            --font-size-lg: 18px;
+            --font-size-xl: 24px;
+            --font-size-2xl: 32px;
+            --font-size-3xl: 48px;
+
+            /* Border Radius */
+            --radius-base: 8px;
+            --radius-lg: 12px;
+            --radius-xl: 16px;
+
+            /* Shadows */
+            --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
+            --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
+            --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--color-bg-light);
+            color: var(--color-text-dark);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* Page Container */
+        .page {
+            display: none;
+            min-height: 100vh;
+        }
+
+        .page.active {
+            display: block;
+        }
+
+        /* Navigation Header */
+        .nav-header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: var(--space-16);
+            border-bottom: 1px solid var(--color-border);
+            z-index: 1000;
+        }
+
+        .nav-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .logo {
+            font-size: var(--font-size-xl);
+            font-weight: bold;
+            color: var(--color-primary);
+        }
+
+        .nav-menu {
+            display: flex;
+            gap: var(--space-24);
+        }
+
+        .nav-link {
+            color: var(--color-text-dark);
+            text-decoration: none;
+            font-weight: 500;
+            padding: var(--space-8) var(--space-16);
+            border-radius: var(--radius-base);
+            transition: all 0.3s ease;
+        }
+
+        .nav-link:hover,
+        .nav-link.active {
+            background: var(--color-primary);
+            color: var(--color-text-light);
+        }
+
+        /* HOME PAGE */
+        .home-page {
+            background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%);
+            color: var(--color-text-light);
+            padding-top: 80px;
+        }
+
+        .hero-section {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: var(--space-32);
+        }
+
+        .hero-content {
+            max-width: 800px;
+        }
+
+        .hero-title {
+            font-size: var(--font-size-3xl);
+            font-weight: bold;
+            margin-bottom: var(--space-16);
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .hero-subtitle {
+            font-size: var(--font-size-xl);
+            margin-bottom: var(--space-12);
+            opacity: 0.9;
+        }
+
+        .hero-tagline {
+            font-size: var(--font-size-lg);
+            margin-bottom: var(--space-32);
+            opacity: 0.8;
+        }
+
+        .action-buttons {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: var(--space-24);
+            margin-bottom: var(--space-32);
+        }
+
+        .action-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: var(--color-text-light);
+            padding: var(--space-24);
+            border-radius: var(--radius-xl);
+            text-decoration: none;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            cursor: pointer;
+        }
+
+        .action-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .action-btn-icon {
+            font-size: var(--font-size-2xl);
+            margin-bottom: var(--space-12);
+        }
+
+        .action-btn-title {
+            font-size: var(--font-size-lg);
+            font-weight: bold;
+            margin-bottom: var(--space-8);
+        }
+
+        .action-btn-desc {
+            font-size: var(--font-size-sm);
+            opacity: 0.8;
+        }
+
+        .quick-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: var(--space-20);
+            margin-bottom: var(--space-32);
+        }
+
+        .info-item {
+            text-align: center;
+        }
+
+        .info-icon {
+            font-size: var(--font-size-2xl);
+            margin-bottom: var(--space-8);
+        }
+
+        .info-title {
+            font-weight: bold;
+            margin-bottom: var(--space-4);
+        }
+
+        .start-presentation-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: var(--space-8);
+            background: rgba(255, 255, 255, 0.15);
+            color: var(--color-text-light);
+            padding: var(--space-16) var(--space-32);
+            border-radius: var(--radius-lg);
+            text-decoration: none;
+            font-size: var(--font-size-lg);
+            font-weight: 600;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            transition: all 0.3s ease;
+            margin-right: var(--space-16);
+        }
+
+        .start-presentation-btn:hover {
+            background: rgba(255, 255, 255, 0.25);
+            transform: translateY(-2px);
+        }
+
+        .skip-to-survey {
+            color: rgba(255, 255, 255, 0.7);
+            text-decoration: underline;
+            font-size: var(--font-size-sm);
+        }
+
+        .home-footer {
+            background: rgba(0, 0, 0, 0.2);
+            padding: var(--space-24);
+            text-align: center;
+            font-size: var(--font-size-sm);
+            opacity: 0.8;
+        }
+
+        /* SLIDESHOW PAGE */
+        .slideshow-page {
+            background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%);
+            color: var(--color-text-light);
+            padding-top: 80px;
+        }
+
+        .slideshow-container {
+            position: relative;
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .slide {
+            display: none;
+            width: 90%;
+            max-width: 1200px;
+            padding: 2rem;
+            text-align: center;
+            opacity: 0;
+            transform: translateX(50px);
+            transition: all 0.5s ease-in-out;
+        }
+
+        .slide.active {
+            display: block;
+            opacity: 1;
+            transform: translateX(0);
+        }
+
+        .slide h1 {
+            font-size: clamp(2rem, 5vw, 4rem);
+            margin-bottom: 1rem;
+            font-weight: 700;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .slide h2 {
+            font-size: clamp(1.5rem, 4vw, 3rem);
+            margin-bottom: 1.5rem;
+            font-weight: 600;
+        }
+
+        .slide h3 {
+            font-size: clamp(1.2rem, 3vw, 2rem);
+            margin-bottom: 1rem;
+            color: #00C2FF;
+        }
+
+        .slide p {
+            font-size: clamp(1rem, 2vw, 1.5rem);
+            line-height: 1.6;
+            margin-bottom: 1rem;
+        }
+
+        .slide ul {
+            text-align: left;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .slide li {
+            font-size: clamp(1rem, 2vw, 1.3rem);
+            margin-bottom: 0.8rem;
+            padding-left: 1rem;
+            opacity: 0;
+            transform: translateX(-20px);
+            animation: slideInLeft 0.5s ease-out forwards;
+        }
+
+        .slide li:nth-child(1) {
+            animation-delay: 0.1s;
+        }
+
+        .slide li:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .slide li:nth-child(3) {
+            animation-delay: 0.3s;
+        }
+
+        .slide li:nth-child(4) {
+            animation-delay: 0.4s;
+        }
+
+        .slide li:nth-child(5) {
+            animation-delay: 0.5s;
+        }
+
+        .slide li:nth-child(6) {
+            animation-delay: 0.6s;
+        }
+
+        @keyframes slideInLeft {
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .cover-slide {
+            background: linear-gradient(135deg, #0052CC 0%, #0066FF 50%, #00C2FF 100%);
+            border-radius: 20px;
+            padding: 4rem 2rem;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+        }
+
+        .cover-slide .logo {
+            width: 120px;
+            height: 120px;
+            background: white;
+            border-radius: 50%;
+            margin: 0 auto 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            color: #0052CC;
+            font-weight: bold;
+        }
+
+        .author {
+            font-size: clamp(1rem, 2vw, 1.2rem);
+            margin-top: 2rem;
+            opacity: 0.9;
+        }
+
+        .footer {
+            position: absolute;
+            bottom: 1rem;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 1rem;
+            opacity: 0.8;
+        }
+
+        .stats-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-top: 2rem;
+        }
+
+        .stat-card {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 2rem;
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .stat-number {
+            font-size: clamp(2rem, 4vw, 3rem);
+            font-weight: bold;
+            color: #00C2FF;
+            margin: 0.5rem 0;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-top: 2rem;
+        }
+
+        .feature-item {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 1.5rem;
+            border-radius: 10px;
+            backdrop-filter: blur(5px);
+        }
+
+        .step-list {
+            counter-reset: step-counter;
+        }
+
+        .step-list li {
+            counter-increment: step-counter;
+            position: relative;
+            padding-left: 3rem;
+        }
+
+        .step-list li::before {
+            content: counter(step-counter);
+            position: absolute;
+            left: 0;
+            top: 0;
+            background: #00C2FF;
+            color: #0052CC;
+            width: 2rem;
+            height: 2rem;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+
+        .navigation {
+            position: fixed;
+            bottom: 2rem;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 1rem;
+            z-index: 100;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .navigation.visible {
+            opacity: 1;
+        }
+
+        .nav-btn {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            padding: 0.8rem 1.5rem;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 1rem;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            transition: all 0.3s ease;
+        }
+
+        .nav-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .nav-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .progress-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.2);
+            z-index: 100;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #00C2FF, #0066FF);
+            transition: width 0.5s ease;
+            width: 5.26%;
+            /* 1/19 slides */
+        }
+
+        .slide-counter {
+            position: fixed;
+            top: 2rem;
+            right: 2rem;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 1rem;
+            z-index: 100;
+        }
+
+        .qa-item {
+            background: rgba(255, 255, 255, 0.1);
+            margin: 1rem 0;
+            padding: 1.5rem;
+            border-radius: 10px;
+            text-align: left;
+        }
+
+        .qa-question {
+            font-weight: bold;
+            color: #00C2FF;
+            margin-bottom: 0.5rem;
+        }
+
+        .contact-card {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 2rem;
+            border-radius: 15px;
+            margin: 2rem auto;
+            max-width: 500px;
+            backdrop-filter: blur(10px);
+        }
+
+        .closing-slide {
+            background: linear-gradient(135deg, #0066FF 0%, #00C2FF 100%);
+            border-radius: 20px;
+            padding: 4rem 2rem;
+        }
+
+        .region-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 0.5rem;
+            margin-top: 2rem;
+        }
+
+        .region-item {
+            padding: 0.5rem;
+            font-size: clamp(0.9rem, 1.5vw, 1.1rem);
+        }
+
+        /* SURVEY PAGE */
+        .survey-page {
+            padding-top: 80px;
+            background: var(--color-bg-light);
+            min-height: 100vh;
+        }
+
+        .survey-container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: var(--space-32);
+        }
+
+        .survey-header {
+            text-align: center;
+            margin-bottom: var(--space-32);
+        }
+
+        .survey-title {
+            font-size: var(--font-size-2xl);
+            color: var(--color-primary);
+            margin-bottom: var(--space-8);
+        }
+
+        .survey-subtitle {
+            color: var(--color-text-dark);
+            opacity: 0.7;
+        }
+
+        .form-section {
+            background: var(--color-surface);
+            border-radius: var(--radius-lg);
+            padding: var(--space-24);
+            margin-bottom: var(--space-24);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .section-title {
+            font-size: var(--font-size-lg);
+            color: var(--color-primary);
+            margin-bottom: var(--space-16);
+            padding-bottom: var(--space-8);
+            border-bottom: 2px solid var(--color-border);
+        }
+
+        .form-group {
+            margin-bottom: var(--space-16);
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: var(--space-8);
+            font-weight: 600;
+            color: var(--color-text-dark);
+        }
+
+        .required {
+            color: var(--color-danger);
+        }
+
+        .form-input {
+            width: 100%;
+            padding: var(--space-12);
+            border: 2px solid var(--color-border);
+            border-radius: var(--radius-base);
+            font-size: var(--font-size-base);
+            transition: border-color 0.3s ease;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: var(--color-primary);
+            box-shadow: 0 0 0 3px rgba(0, 82, 204, 0.1);
+        }
+
+        .rating-group {
+            margin-bottom: var(--space-20);
+        }
+
+        .rating-item {
+            margin-bottom: var(--space-16);
+        }
+
+        .rating-label {
+            display: block;
+            margin-bottom: var(--space-8);
+            font-weight: 500;
+        }
+
+        .star-rating {
+            display: flex;
+            gap: var(--space-4);
+        }
+
+        .star {
+            font-size: var(--font-size-xl);
+            color: #ddd;
+            cursor: pointer;
+            transition: color 0.2s ease;
+        }
+
+        .star:hover,
+        .star.active {
+            color: #ffc107;
+        }
+
+        .quiz-question {
+            margin-bottom: var(--space-20);
+        }
+
+        .quiz-title {
+            font-weight: 600;
+            margin-bottom: var(--space-12);
+        }
+
+        .quiz-options {
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-8);
+        }
+
+        .quiz-option {
+            display: flex;
+            align-items: center;
+            gap: var(--space-8);
+            padding: var(--space-12);
+            border: 2px solid var(--color-border);
+            border-radius: var(--radius-base);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .quiz-option:hover {
+            background: rgba(0, 82, 204, 0.05);
+        }
+
+        .quiz-option input[type="radio"] {
+            margin: 0;
+        }
+
+        .emoji-rating {
+            display: flex;
+            gap: var(--space-12);
+            justify-content: center;
+            margin: var(--space-16) 0;
+        }
+
+        .emoji-option {
+            padding: var(--space-16);
+            border: 2px solid var(--color-border);
+            border-radius: var(--radius-lg);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-align: center;
+            min-width: 80px;
+        }
+
+        .emoji-option:hover,
+        .emoji-option.selected {
+            border-color: var(--color-primary);
+            background: rgba(0, 82, 204, 0.1);
+        }
+
+        .emoji {
+            font-size: var(--font-size-xl);
+            display: block;
+            margin-bottom: var(--space-4);
+        }
+
+        .scale-slider {
+            margin: var(--space-16) 0;
+        }
+
+        .slider {
+            width: 100%;
+            height: 8px;
+            border-radius: 4px;
+            background: var(--color-border);
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        .slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: var(--color-primary);
+            cursor: pointer;
+        }
+
+        .slider::-moz-range-thumb {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: var(--color-primary);
+            cursor: pointer;
+            border: none;
+        }
+
+        .scale-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: var(--font-size-sm);
+            margin-top: var(--space-8);
+        }
+
+        .form-actions {
+            display: flex;
+            gap: var(--space-16);
+            justify-content: center;
+            margin-top: var(--space-32);
+        }
+
+        .btn {
+            padding: var(--space-12) var(--space-24);
+            border: none;
+            border-radius: var(--radius-base);
+            font-size: var(--font-size-base);
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: var(--space-8);
+        }
+
+        .btn-primary {
+            background: var(--color-primary);
+            color: var(--color-text-light);
+        }
+
+        .btn-primary:hover {
+            background: #003d99;
+            transform: translateY(-2px);
+        }
+
+        .btn-secondary {
+            background: var(--color-border);
+            color: var(--color-text-dark);
+        }
+
+        .btn-secondary:hover {
+            background: #ccc;
+        }
+
+        .progress-indicator {
+            background: var(--color-surface);
+            padding: var(--space-16);
+            border-radius: var(--radius-base);
+            margin-bottom: var(--space-24);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: var(--color-border);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: var(--space-8);
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--color-primary), var(--color-secondary));
+            transition: width 0.3s ease;
+        }
+
+        .progress-text {
+            text-align: center;
+            font-size: var(--font-size-sm);
+            color: var(--color-text-dark);
+        }
+
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 2000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(5px);
+        }
+
+        .modal.active {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background: var(--color-surface);
+            padding: var(--space-32);
+            border-radius: var(--radius-xl);
+            max-width: 500px;
+            width: 90%;
+            text-align: center;
+            box-shadow: var(--shadow-lg);
+        }
+
+        .modal-title {
+            font-size: var(--font-size-xl);
+            margin-bottom: var(--space-16);
+            color: var(--color-primary);
+        }
+
+        .modal-body {
+            margin-bottom: var(--space-24);
+            color: var(--color-text-dark);
+        }
+
+        .download-link {
+            display: inline-flex;
+            align-items: center;
+            gap: var(--space-8);
+            background: var(--color-success);
+            color: var(--color-text-light);
+            padding: var(--space-12) var(--space-20);
+            border-radius: var(--radius-base);
+            text-decoration: none;
+            font-weight: 600;
+            margin: var(--space-16) 0;
+        }
+
+        .download-link:hover {
+            background: #00a085;
+        }
+
+        @media (max-width: 768px) {
+            .nav-menu {
+                display: none;
+            }
+
+            .hero-title {
+                font-size: var(--font-size-2xl);
+            }
+
+            .action-buttons {
+                grid-template-columns: 1fr;
+            }
+
+            .quick-info {
+                grid-template-columns: 1fr;
+            }
+
+            .emoji-rating {
+                flex-wrap: wrap;
+            }
+
+            .emoji-option {
+                min-width: 60px;
+            }
+
+            .slide {
+                padding: 1rem;
+            }
+
+            .stats-container {
+                grid-template-columns: 1fr;
+            }
+
+            .navigation {
+                bottom: 1rem;
+                gap: 0.5rem;
+            }
+
+            .nav-btn {
+                padding: 0.6rem 1rem;
+                font-size: 0.9rem;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Navigation Header -->
+    <nav class="nav-header">
+        <div class="nav-container">
+            <div class="logo">BKKBN Aceh</div>
+            <div class="nav-menu">
+                <a href="#" class="nav-link active" data-page="home">Beranda</a>
+                <a href="#" class="nav-link" data-page="slideshow">Tutorial</a>
+                <a href="#" class="nav-link" data-page="survey">Survey</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- HOME PAGE -->
+    <div id="home-page" class="page active home-page">
+        <section class="hero-section">
+            <div class="hero-content">
+                <h1 class="hero-title">BIMBINGAN TEKNIS<br>SIGA SMART DOWNLOADER</h1>
+                <p class="hero-subtitle">Otomatisasi Unduhan Data Sistem Informasi Keluarga</p>
+                <p class="hero-tagline">Tingkatkan Efisiensi Kerja hingga 98%</p>
+
+                <div class="action-buttons">
+                    <button class="action-btn" id="downloadExtensionBtn">
+                        <div class="action-btn-icon">📥</div>
+                        <div class="action-btn-title">UNDUH EKSTENSI</div>
+                        <div class="action-btn-desc">Download file ekstensi browser (ZIP ~50KB)</div>
+                    </button>
+
+                    <button class="action-btn" id="downloadModuleBtn">
+                        <div class="action-btn-icon">📄</div>
+                        <div class="action-btn-title">UNDUH MODUL BIMTEK</div>
+                        <div class="action-btn-desc">Download panduan lengkap (DOCX ~400KB)</div>
+                    </button>
+
+                    <button class="action-btn" id="goToSurveyBtn">
+                        <div class="action-btn-icon">📝</div>
+                        <div class="action-btn-title">SURVEY KEPUASAN</div>
+                        <div class="action-btn-desc">Isi evaluasi dan berikan feedback</div>
+                    </button>
+                </div>
+
+                <div class="quick-info">
+                    <div class="info-item">
+                        <div class="info-icon">⚡</div>
+                        <div class="info-title">Efisiensi 98%</div>
+                        <div>Hemat waktu kerja</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-icon">🎯</div>
+                        <div class="info-title">Akurasi 95%</div>
+                        <div>Data konsisten</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-icon">📊</div>
+                        <div class="info-title">Real-time</div>
+                        <div>Monitor progress</div>
+                    </div>
+                </div>
+
+                <div>
+                    <a href="#" class="start-presentation-btn" id="startPresentationBtn">
+                        ▶️ MULAI TUTORIAL
+                    </a>
+                    <a href="#" class="skip-to-survey" id="skipToSurveyBtn">Lewati ke Survey</a>
+                </div>
+            </div>
+        </section>
+
+        <footer class="home-footer">
+            <p><strong>Tim Datin BKKBN Provinsi Aceh</strong></p>
+            <p>📧 datin.aceh@bkkbn.go.id | 📱 +62 852 6015 6125 | 📍 Jl. T. Nyak Arif No.219, Banda Aceh</p>
+            <p>© 2025 BKKBN Provinsi Aceh</p>
+        </footer>
+    </div>
+
+    <!-- SLIDESHOW PAGE -->
+    <div id="slideshow-page" class="page slideshow-page">
+        <div class="slideshow-container">
+            <!-- Slide 1: Cover -->
+            <div class="slide active cover-slide">
+                <div class="logo">BKKBN</div>
+                <h1>BIMBINGAN TEKNIS</h1>
+                <h2>SIGA SMART DOWNLOADER</h2>
+                <p>Otomatisasi Unduhan Data Sistem Informasi Keluarga</p>
+                <div class="author">M. Husnul Aqib | Pranata Komputer Ahli Pertama</div>
+                <div class="footer">BKKBN Provinsi Aceh | 2025</div>
+            </div>
+
+            <!-- Slide 2: Daftar Isi -->
+            <div class="slide">
+                <h2>📋 Daftar Isi</h2>
+                <ol class="step-list">
+                    <li>Download Ekstensi</li>
+                    <li>Instalasi Ekstensi Browser</li>
+                    <li>Interface & Fitur Utama</li>
+                    <li>Metode 1: Multi URL - Single Kabupaten (Laptop Kuat)</li>
+                    <li>Metode 2: Single URL - Multi Kabupaten (Laptop Biasa)</li>
+                    <li>Tips & Troubleshooting</li>
+                </ol>
+            </div>
+
+            <!-- Slide 3: Download -->
+            <div class="slide">
+                <h2>📥 Step 1: Download Ekstensi</h2>
+                <h3>Dapatkan File Ekstensi</h3>
+                <ol class="step-list">
+                    <li>Buka halaman web tutorial ini</li>
+                    <li>Klik tombol <strong>"Download Ekstensi"</strong></li>
+                    <li>File <code>SIGA_Smart_Downloader.zip</code> akan terunduh</li>
+                    <li>Ekstrak file ZIP ke folder yang mudah diakses</li>
+                    <li>Anda akan mendapat folder berisi file ekstensi</li>
+                </ol>
+                <div class="stat-card">
+                    <p>� <strong>Tip:</strong> Simpan di folder seperti <code>C:\Extensions\SIGA_Downloader</code> agar
+                        mudah ditemukan</p>
+                </div>
+            </div>
+
+            <!-- Slide 4: Instalasi -->
+            <div class="slide">
+                <h2>🔧 Step 2: Instalasi Ekstensi</h2>
+                <h3>Pasang di Browser Chrome/Edge</h3>
+                <ol class="step-list">
+                    <li>Buka browser Chrome atau Edge</li>
+                    <li>Ketik <code>chrome://extensions/</code> di address bar</li>
+                    <li>Aktifkan <strong>Developer Mode</strong> (toggle di kanan atas)</li>
+                    <li>Klik tombol <strong>"Load unpacked"</strong></li>
+                    <li>Pilih folder hasil ekstrak ekstensi</li>
+                    <li>✅ Ekstensi akan muncul di daftar & siap digunakan</li>
+                </ol>
+                <div class="stat-card">
+                    <p>⚠️ <strong>Penting:</strong> Pastikan Developer Mode aktif, jika tidak tombol Load unpacked tidak
+                        muncul</p>
+                </div>
+            </div>
+
+            <!-- Slide 5: Interface -->
+            <div class="slide">
+                <h2>🖥️ Step 3: Mengenal Interface</h2>
+                <h3>Tampilan Popup Ekstensi</h3>
+                <ul>
+                    <li>🏢 <strong>Header:</strong> Logo BKKBN & judul ekstensi</li>
+                    <li>📑 <strong>3 Tab Utama:</strong> TAHUNAN, BULANAN, DOWNLOAD</li>
+                    <li>🔗 <strong>Form URL:</strong> Textarea untuk input URL (bisa banyak, pisah baris)</li>
+                    <li>☑️ <strong>Checkbox Kabupaten:</strong> Pilih 1 atau lebih dari 23 kab/kota</li>
+                    <li>🔘 <strong>Filter Tambahan:</strong> Periode, Tahun, Kecamatan, Desa (sesuai kebutuhan)</li>
+                    <li>📊 <strong>Tab Download:</strong> Monitor status & progress real-time</li>
+                </ul>
+            </div>
+
+            <!-- Slide 6: Method Selection -->
+            <div class="slide">
+                <h2>🎯 Pilih Metode Penggunaan</h2>
+                <h3>2 Cara Sesuai Spesifikasi Laptop</h3>
+                <div class="stats-container">
+                    <div class="stat-card">
+                        <h4>🚀 Metode 1</h4>
+                        <div><strong>Multi URL - Single Kabupaten</strong></div>
+                        <div>✓ Untuk laptop kuat (RAM ≥8GB)</div>
+                        <div>✓ Buka banyak tab sekaligus</div>
+                        <div>✓ Lebih cepat (paralel)</div>
+                    </div>
+                    <div class="stat-card">
+                        <h4>💻 Metode 2</h4>
+                        <div><strong>Single URL - Multi Kabupaten</strong></div>
+                        <div>✓ Untuk laptop standar</div>
+                        <div>✓ Hanya 1 tab dibuka</div>
+                        <div>✓ Lebih stabil (serial)</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Slide 7: Method 1 Intro -->
+            <div class="slide">
+                <h2>🚀 METODE 1: Multi URL - Single Kabupaten</h2>
+                <h3>Untuk Laptop Kuat (RAM ≥8GB)</h3>
+                <div class="stat-card">
+                    <h4>� Kapan Menggunakan Metode Ini?</h4>
+                    <ul>
+                        <li>✓ Laptop Anda memiliki RAM 8GB atau lebih</li>
+                        <li>✓ Ingin download banyak laporan berbeda sekaligus</li>
+                        <li>✓ Koneksi internet stabil & cepat</li>
+                        <li>✓ Mengutamakan kecepatan (paralel processing)</li>
+                    </ul>
+                    <h4>📊 Contoh Skenario:</h4>
+                    <p>Download 23 jenis tabel untuk 1 kabupaten = Buka 23 tab sekaligus</p>
+                </div>
+            </div>
+
+            <!-- Slide 8: Method 1 Steps -->
+            <div class="slide">
+                <h2>🚀 Metode 1: Langkah-Langkah</h2>
+                <h3>Multi URL - Single Kabupaten</h3>
+                <ol class="step-list">
+                    <li>📋 Salin <strong>SEMUA URL</strong> laporan yang ingin didownload (5-20 URL)</li>
+                    <li>Paste URL ke textarea (pisahkan dengan enter/baris baru)</li>
+                    <li>☑️ Pilih <strong>HANYA 1 KABUPATEN</strong> saja</li>
+                    <li>Pilih Periode & Tahun (jika Tab Bulanan)</li>
+                    <li>Klik <strong>Submit</strong></li>
+                    <li>🌐 Ekstensi akan membuka banyak tab sekaligus (1 tab per URL)</li>
+                    <li>� Monitor progress di Tab Download</li>
+                    <li>💾 File otomatis tersimpan di folder Downloads</li>
+                </ol>
+            </div>
+
+            <!-- Slide 9: Method 1 Example -->
+            <div class="slide">
+                <h2>🚀 Metode 1: Contoh Praktis</h2>
+                <h3>Download 3 Laporan Bulanan - Aceh Besar</h3>
+                <div class="stat-card">
+                    <p><strong>� Input Textarea (3 URL):</strong></p>
+                    <code style="display:block;font-size:0.8em;line-height:1.5;">
+                    https://siga.bkkbn.go.id/tabel1<br>
+                    https://siga.bkkbn.go.id/tabel2<br>
+                    https://siga.bkkbn.go.id/tabel3
+                    </code>
+                    <p><strong>☑️ Pilih:</strong> HANYA "Aceh Besar"</p>
+                    <p><strong>� Periode:</strong> Januari | <strong>Tahun:</strong> 2025</p>
+                    <p><strong>✅ Hasil:</strong> 3 tab terbuka paralel → 3 file Excel terdownload dalam ~3 menit</p>
+                    <p><strong>⚡ Keunggulan:</strong> Cepat karena proses bersamaan (tidak menunggu satu-satu)</p>
+                </div>
+            </div>
+
+            <!-- Slide 10: Method 2 Intro -->
+            <div class="slide">
+                <h2>💻 METODE 2: Single URL - Multi Kabupaten</h2>
+                <h3>Untuk Laptop Standar</h3>
+                <div class="stat-card">
+                    <h4>� Kapan Menggunakan Metode Ini?</h4>
+                    <ul>
+                        <li>✓ Laptop RAM terbatas (4GB atau kurang)</li>
+                        <li>✓ Ingin download 1 jenis laporan untuk banyak kabupaten</li>
+                        <li>✓ Koneksi internet standar</li>
+                        <li>✓ Mengutamakan stabilitas (serial processing)</li>
+                    </ul>
+                    <h4>� Contoh Skenario:</h4>
+                    <p>Download laporan Catin Bulanan untuk 23 kabupaten = Input 1 URL, pilih semua kabupaten</p>
+                    <p>Ekstensi akan otomatis proses satu per satu (tidak buka banyak tab)</p>
+                </div>
+            </div>
+
+            <!-- Slide 11: Method 2 Steps -->
+            <div class="slide">
+                <h2>💻 Metode 2: Langkah-Langkah</h2>
+                <h3>Single URL - Multi Kabupaten</h3>
+                <ol class="step-list">
+                    <li>📋 Salin <strong>HANYA 1 URL</strong> laporan yang ingin didownload</li>
+                    <li>Paste URL ke textarea</li>
+                    <li>☑️ Pilih <strong>BANYAK KABUPATEN</strong> (bisa 2-23 kabupaten)</li>
+                    <li>Atau gunakan tombol <strong>"Pilih Semua"</strong> untuk semua kabupaten</li>
+                    <li>Pilih Periode & Tahun (jika Tab Bulanan)</li>
+                    <li>Klik <strong>Submit</strong></li>
+                    <li>🌐 Ekstensi akan memproses <strong>satu per satu</strong> kabupaten (reuse 1 tab)</li>
+                    <li>📊 Monitor progress di Tab Download</li>
+                </ol>
+            </div>
+
+            <!-- Slide 12: Method 2 Example -->
+            <div class="slide">
+                <h2>💻 Metode 2: Contoh Praktis</h2>
+                <h3>Download Catin Bulanan - Semua Kabupaten</h3>
+                <div class="stat-card">
+                    <p><strong>� Input Textarea (1 URL):</strong></p>
+                    <code style="display:block;font-size:0.9em;">
+                    https://siga.bkkbn.go.id/lap_catin_bul
+                    </code>
+                    <p><strong>☑️ Pilih:</strong> SEMUA 23 Kabupaten (klik "Pilih Semua")</p>
+                    <p><strong>📅 Periode:</strong> Februari | <strong>Tahun:</strong> 2025</p>
+                    <p><strong>✅ Hasil:</strong> 1 tab digunakan berulang → 23 file Excel terdownload dalam ~25 menit
+                    </p>
+                    <p><strong>💪 Keunggulan:</strong> Stabil untuk laptop RAM rendah, tidak membebani sistem</p>
+                    <p><strong>⚠️ Catatan:</strong> Lebih lambat dari Metode 1, tapi lebih aman untuk laptop standar</p>
+                </div>
+            </div>
+
+            <!-- Slide 13: Comparison -->
+            <div class="slide">
+                <h2>⚖️ Perbandingan Metode</h2>
+                <h3>Mana yang Sebaiknya Digunakan?</h3>
+                <div class="stats-container">
+                    <div class="stat-card">
+                        <h4>🚀 Metode 1</h4>
+                        <div><strong>Multi URL - Single Kabupaten</strong></div>
+                        <div>✅ Lebih cepat (paralel)</div>
+                        <div>✅ Cocok download berbagai jenis laporan</div>
+                        <div>⚠️ Butuh RAM ≥8GB</div>
+                        <div>⚠️ Buka banyak tab (berat)</div>
+                    </div>
+                    <div class="stat-card">
+                        <h4>💻 Metode 2</h4>
+                        <div><strong>Single URL - Multi Kabupaten</strong></div>
+                        <div>✅ Lebih stabil (serial)</div>
+                        <div>✅ Cocok laptop standar</div>
+                        <div>✅ Hanya 1 tab (ringan)</div>
+                        <div>⚠️ Lebih lambat (tunggu antrian)</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Slide 14: Monitoring -->
+            <div class="slide">
+                <h2>📊 Monitoring Progress</h2>
+                <h3>Tab Download - Dashboard Real-time</h3>
+                <ul>
+                    <li>🔵 <strong>Status:</strong> Queue (menunggu) → In Progress (proses) → Success/Failed</li>
+                    <li>📊 <strong>Progress Bar:</strong> Persentase keberhasilan (contoh: 18/23 = 78%)</li>
+                    <li>⏱️ <strong>Timestamp:</strong> Waktu mulai dan estimasi selesai</li>
+                    <li>📁 <strong>Last Downloaded:</strong> Info file terakhir berhasil diunduh</li>
+                    <li>❌ <strong>Error Log:</strong> Pesan detail jika ada kegagalan</li>
+                </ul>
+                <div class="stat-card">
+                    <p>💡 <strong>Tip:</strong> Jangan tutup browser selama proses download berlangsung</p>
+                </div>
+            </div>
+
+            <!-- Slide 15: Troubleshooting -->
+            <div class="slide">
+                <h2>🔧 Troubleshooting</h2>
+                <h3>Solusi Masalah Umum</h3>
+                <div class="qa-item">
+                    <div class="qa-question">❌ Download stuck / tidak jalan</div>
+                    <div>✅ Refresh halaman SIGA, pastikan sudah login, restart browser</div>
+                </div>
+                <div class="qa-item">
+                    <div class="qa-question">❌ Browser freeze / hang</div>
+                    <div>✅ Terlalu banyak tab terbuka (Metode 1), coba gunakan Metode 2 atau kurangi jumlah URL</div>
+                </div>
+                <div class="qa-item">
+                    <div class="qa-question">❌ Banyak status "Failed"</div>
+                    <div>✅ Cek URL valid, pastikan data tersedia di SIGA, cek koneksi internet</div>
+                </div>
+                <div class="qa-item">
+                    <div class="qa-question">❌ File tidak muncul di Downloads</div>
+                    <div>✅ Izinkan pop-up & download otomatis di browser settings</div>
+                </div>
+            </div>
+
+            <!-- Slide 16: Tips -->
+            <div class="slide">
+                <h2>💡 Tips & Best Practices</h2>
+                <div class="features-grid">
+                    <div class="feature-item">🌐 Gunakan koneksi internet stabil minimal 2 Mbps</div>
+                    <div class="feature-item">⏰ Download di jam kerja (server SIGA lebih responsif)</div>
+                    <div class="feature-item">📊 Metode 1: Maksimal 10-15 URL per batch</div>
+                    <div class="feature-item">📊 Metode 2: Bisa hingga 23 kabupaten sekaligus</div>
+                    <div class="feature-item">🔄 Jangan tutup browser selama proses download</div>
+                    <div class="feature-item">💾 Backup file hasil download secara berkala</div>
+                    <div class="feature-item">🔧 Tutup tab/aplikasi lain yang tidak perlu</div>
+                    <div class="feature-item">📁 Bersihkan folder Downloads secara rutin</div>
+                </div>
+            </div>
+
+            <!-- Slide 17: FAQ -->
+            <div class="slide">
+                <h2>❓ FAQ - Pertanyaan Umum</h2>
+                <div class="qa-item">
+                    <div class="qa-question">Q: Apakah bisa di Firefox/Safari?</div>
+                    <div>A: Saat ini hanya Chrome & Edge (Chromium based)</div>
+                </div>
+                <div class="qa-item">
+                    <div class="qa-question">Q: Berapa lama download 23 kabupaten?</div>
+                    <div>A: Metode 1 (~15 menit), Metode 2 (~25-30 menit), tergantung koneksi</div>
+                </div>
+                <div class="qa-item">
+                    <div class="qa-question">Q: Apakah data aman?</div>
+                    <div>A: Ya, proses 100% lokal di browser Anda, tidak ada data dikirim ke server lain</div>
+                </div>
+                <div class="qa-item">
+                    <div class="qa-question">Q: Bagaimana cara update ekstensi?</div>
+                    <div>A: Download versi terbaru, hapus ekstensi lama, install yang baru</div>
+                </div>
+            </div>
+
+            <!-- Slide 18: Support -->
+            <div class="slide">
+                <h2>📞 Dukungan Teknis</h2>
+                <div class="contact-card">
+                    <h3>Tim Data dan Informasi (Datin)</h3>
+                    <h3>BKKBN Provinsi Aceh</h3>
+                    <p>✉️ <strong>Email:</strong> datin.aceh@bkkbn.go.id</p>
+                    <p>📱 <strong>WhatsApp:</strong> +62 852 6015 6125</p>
+                    <p>� <strong>Layanan:</strong> Senin - Jumat, 08.00 - 16.00 WIB</p>
+                    <p>� <strong>Alamat:</strong> Jl. T. Nyak Arif No.219, Banda Aceh</p>
+                </div>
+                <div class="stat-card" style="margin-top:20px;">
+                    <p>💡 Silakan hubungi kami jika mengalami kendala teknis atau membutuhkan pelatihan lebih lanjut</p>
+                </div>
+            </div>
+
+            <!-- Slide 19: Summary -->
+            <div class="slide closing-slide">
+                <h1>📝 Ringkasan</h1>
+                <h3>Cara Menggunakan SIGA Smart Downloader</h3>
+                <ol class="step-list" style="text-align:left;max-width:600px;margin:20px auto;">
+                    <li>Download & Install ekstensi di Chrome/Edge</li>
+                    <li>Pilih Metode sesuai spesifikasi laptop:
+                        <ul style="margin-top:10px;">
+                            <li>🚀 <strong>Metode 1:</strong> Multi URL + 1 Kabupaten (Laptop Kuat)</li>
+                            <li>💻 <strong>Metode 2:</strong> 1 URL + Multi Kabupaten (Laptop Standar)</li>
+                        </ul>
+                    </li>
+                    <li>Input URL, pilih kabupaten, pilih periode</li>
+                    <li>Submit & monitor progress di Tab Download</li>
+                    <li>File otomatis tersimpan di folder Downloads</li>
+                </ol>
+                <div class="contact-card" style="margin-top:30px;">
+                    <p><strong>Selamat menggunakan SIGA Smart Downloader! 🎉</strong></p>
+                    <p>Tim Datin BKKBN Provinsi Aceh</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="navigation">
+            <button class="nav-btn" id="prevBtn">◀ Sebelumnya</button>
+            <button class="nav-btn" id="homeBtn">🏠 Awal</button>
+            <button class="nav-btn" id="nextBtn">Selanjutnya ▶</button>
+        </div>
+
+        <div class="progress-bar">
+            <div class="progress-fill" id="progressFill"></div>
+        </div>
+
+        <div class="slide-counter" id="slideCounter">1 / 19</div>
+    </div>
+
+    <!-- SURVEY PAGE -->
+    <div id="survey-page" class="page survey-page">
+        <div class="survey-container">
+            <div class="survey-header">
+                <h1 class="survey-title">Survey Kepuasan Bimbingan Teknis</h1>
+                <p class="survey-subtitle">Evaluasi SIGA Smart Downloader Extension</p>
+            </div>
+
+            <div class="progress-indicator">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="surveyProgress" style="width: 0%"></div>
+                </div>
+                <div class="progress-text" id="surveyProgressText">0% selesai</div>
+            </div>
+
+            <form id="surveyForm">
+                <!-- Section 1: Identitas -->
+                <div class="form-section">
+                    <h3 class="section-title">📋 Identitas Peserta</h3>
+                    <div class="form-group">
+                        <label class="form-label">Nama Lengkap <span class="required">*</span></label>
+                        <input type="text" class="form-input" name="name" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Instansi/Unit Kerja <span class="required">*</span></label>
+                        <input type="text" class="form-input" name="instansi" required>
+                    </div>
+                </div>
+
+                <!-- Section 2: Ratings -->
+                <div class="form-section">
+                    <h3 class="section-title">⭐ Penilaian</h3>
+                    <div class="rating-group">
+                        <div class="rating-item">
+                            <label class="rating-label">Kemudahan Instalasi</label>
+                            <div class="star-rating" data-rating="instalasi">
+                                <span class="star">★</span>
+                                <span class="star">★</span>
+                                <span class="star">★</span>
+                                <span class="star">★</span>
+                                <span class="star">★</span>
+                            </div>
+                        </div>
+                        <div class="rating-item">
+                            <label class="rating-label">Kemudahan Penggunaan</label>
+                            <div class="star-rating" data-rating="penggunaan">
+                                <span class="star">★</span>
+                                <span class="star">★</span>
+                                <span class="star">★</span>
+                                <span class="star">★</span>
+                                <span class="star">★</span>
+                            </div>
+                        </div>
+                        <div class="rating-item">
+                            <label class="rating-label">Kualitas Materi Bimtek</label>
+                            <div class="star-rating" data-rating="materi">
+                                <span class="star">★</span>
+                                <span class="star">★</span>
+                                <span class="star">★</span>
+                                <span class="star">★</span>
+                                <span class="star">★</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section 3: Satisfaction -->
+                <div class="form-section">
+                    <h3 class="section-title">😊 Kepuasan</h3>
+                    <label class="form-label">Tingkat Kepuasan Keseluruhan</label>
+                    <div class="emoji-rating" id="satisfactionRating">
+                        <div class="emoji-option" data-value="1">
+                            <span class="emoji">😞</span>
+                            <div>Sangat Tidak Puas</div>
+                        </div>
+                        <div class="emoji-option" data-value="2">
+                            <span class="emoji">😐</span>
+                            <div>Tidak Puas</div>
+                        </div>
+                        <div class="emoji-option" data-value="3">
+                            <span class="emoji">🙂</span>
+                            <div>Cukup</div>
+                        </div>
+                        <div class="emoji-option" data-value="4">
+                            <span class="emoji">😊</span>
+                            <div>Puas</div>
+                        </div>
+                        <div class="emoji-option" data-value="5">
+                            <span class="emoji">😄</span>
+                            <div>Sangat Puas</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section 4: Quiz -->
+                <div class="form-section">
+                    <h3 class="section-title">❓ Pemahaman Materi</h3>
+                    <div class="quiz-question">
+                        <div class="quiz-title">1. Apa fungsi utama SIGA Smart Downloader?</div>
+                        <div class="quiz-options">
+                            <label class="quiz-option">
+                                <input type="radio" name="quiz1" value="a">
+                                A. Upload data SIGA
+                            </label>
+                            <label class="quiz-option">
+                                <input type="radio" name="quiz1" value="b">
+                                B. Otomatisasi download massal data SIGA
+                            </label>
+                            <label class="quiz-option">
+                                <input type="radio" name="quiz1" value="c">
+                                C. Backup database SIGA
+                            </label>
+                        </div>
+                    </div>
+                    <div class="quiz-question">
+                        <div class="quiz-title">2. Komponen mana yang bertanggung jawab mengambil data dari halaman
+                            SIGA?</div>
+                        <div class="quiz-options">
+                            <label class="quiz-option">
+                                <input type="radio" name="quiz2" value="a"> A. Popup UI
+                            </label>
+                            <label class="quiz-option">
+                                <input type="radio" name="quiz2" value="b"> B. Content Script
+                            </label>
+                            <label class="quiz-option">
+                                <input type="radio" name="quiz2" value="c"> C. Manifest.json
+                            </label>
+                        </div>
+                    </div>
+                    <div class="quiz-question">
+                        <div class="quiz-title">3. Mengapa kita menggunakan penyimpanan chrome.storage.local?</div>
+                        <div class="quiz-options">
+                            <label class="quiz-option">
+                                <input type="radio" name="quiz3" value="a"> A. Untuk menyimpan state progress download
+                                antar reload
+                            </label>
+                            <label class="quiz-option">
+                                <input type="radio" name="quiz3" value="b"> B. Untuk mempercepat jaringan
+                            </label>
+                            <label class="quiz-option">
+                                <input type="radio" name="quiz3" value="c"> C. Agar ekstensi bisa berjalan offline penuh
+                            </label>
+                        </div>
+                    </div>
+                    <div class="quiz-question">
+                        <div class="quiz-title">4. Apa manfaat menambahkan hash aman (Unicode-safe) pada URL?</div>
+                        <div class="quiz-options">
+                            <label class="quiz-option">
+                                <input type="radio" name="quiz4" value="a"> A. Mengurangi ukuran file
+                            </label>
+                            <label class="quiz-option">
+                                <input type="radio" name="quiz4" value="b"> B. Menghindari error karakter saat base64
+                                dan memberi identitas unik
+                            </label>
+                            <label class="quiz-option">
+                                <input type="radio" name="quiz4" value="c"> C. Mempercepat proses download
+                            </label>
+                        </div>
+                    </div>
+                    <div class="quiz-question">
+                        <div class="quiz-title">5. Apa tujuan validasi daftar URL sebelum memulai download?</div>
+                        <div class="quiz-options">
+                            <label class="quiz-option">
+                                <input type="radio" name="quiz5" value="a"> A. Agar popup lebih cepat ditutup
+                            </label>
+                            <label class="quiz-option">
+                                <input type="radio" name="quiz5" value="b"> B. Memastikan hanya URL http/https yang
+                                benar dijalankan
+                            </label>
+                            <label class="quiz-option">
+                                <input type="radio" name="quiz5" value="c"> C. Menghapus semua duplikasi hash
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section 5: Feedback -->
+                <div class="form-section">
+                    <h3 class="section-title">💬 Saran & Masukan</h3>
+                    <div class="form-group">
+                        <label class="form-label">Saran Perbaikan</label>
+                        <textarea class="form-input" name="saran" rows="4"
+                            placeholder="Masukan Anda sangat berharga untuk kami..."></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Seberapa besar Anda merekomendasikan tool ini? (1-10)</label>
+                        <div class="scale-slider">
+                            <input type="range" class="slider" id="recommendationSlider" name="recommendation" min="1"
+                                max="10" value="5">
+                            <div class="scale-labels">
+                                <span>1 (Tidak Rekomendasikan)</span>
+                                <span id="sliderValue">5</span>
+                                <span>10 (Sangat Rekomendasikan)</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Form Actions -->
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" id="saveDraftBtn">💾 Simpan Draft</button>
+                    <button type="button" class="btn btn-secondary" id="resetFormBtn">🔄 Reset</button>
+                    <button type="submit" class="btn btn-primary" id="submitSurveyBtn">📤 Kirim Survey</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal for Extension Download -->
+    <div class="modal" id="extensionModal">
+        <div class="modal-content">
+            <h3 class="modal-title">📥 Download Ekstensi SIGA Smart Downloader</h3>
+            <div class="modal-body">
+                <p>Ekstensi browser untuk otomatisasi download data SIGA</p>
+                <p><strong>Ukuran:</strong> ~50KB (ZIP)</p>
+                <p><strong>Kompatibel:</strong> Chrome, Edge (Manifest V3)</p>
+                <a href="https://drive.google.com/uc?export=download&id=1ciOKcA3DpLp6qRocszszD1Jhz7chLu4I"
+                    target="_blank" rel="noopener" class="download-link" id="downloadExtensionLink">
+                    📥 Download SIGA_Smart_Downloader.zip
+                </a>
+                <p><em>Setelah download, buka chrome://extensions dan aktifkan Developer Mode, lalu klik "Load
+                        unpacked"</em></p>
+            </div>
+            <button class="btn btn-secondary" id="closeExtensionModal">Tutup</button>
+        </div>
+    </div>
+
+    <!-- Modal for Success -->
+    <div class="modal" id="successModal">
+        <div class="modal-content">
+            <h3 class="modal-title">✅ Terima Kasih!</h3>
+            <div class="modal-body">
+                <p>Evaluasi Anda telah berhasil dikirim.</p>
+                <p>Masukan Anda sangat berharga untuk pengembangan lebih lanjut.</p>
+            </div>
+            <div class="form-actions">
+                <button class="btn btn-primary" id="backToHomeFromSuccess">🏠 Kembali ke Beranda</button>
+                <button class="btn btn-secondary" id="viewPresentationFromSuccess">📊 Lihat Tutorial</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class Slideshow {
+            constructor() {
+                this.currentSlide = 0;
+                this.totalSlides = 19;
+                this.slides = document.querySelectorAll('.slide');
+                this.prevBtn = document.getElementById('prevBtn');
+                this.nextBtn = document.getElementById('nextBtn');
+                this.homeBtn = document.getElementById('homeBtn');
+                this.navigation = document.querySelector('.navigation');
+                this.progressFill = document.getElementById('progressFill');
+                this.slideCounter = document.getElementById('slideCounter');
+                this.hideTimeout = null;
+
+                this.init();
+            }
+
+            init() {
+                this.updateDisplay();
+                this.bindEvents();
+                this.showNavigation();
+            }
+
+            bindEvents() {
+                // Button navigation
+                this.prevBtn.addEventListener('click', () => this.prevSlide());
+                this.nextBtn.addEventListener('click', () => this.nextSlide());
+                this.homeBtn.addEventListener('click', () => this.goToSlide(0));
+
+                // Keyboard navigation
+                document.addEventListener('keydown', (e) => {
+                    switch (e.key) {
+                        case 'ArrowRight':
+                        case 'ArrowDown':
+                        case ' ':
+                        case 'Enter':
+                            e.preventDefault();
+                            this.nextSlide();
+                            break;
+                        case 'ArrowLeft':
+                        case 'ArrowUp':
+                            e.preventDefault();
+                            this.prevSlide();
+                            break;
+                        case 'Home':
+                            e.preventDefault();
+                            this.goToSlide(0);
+                            break;
+                        case 'End':
+                            e.preventDefault();
+                            this.goToSlide(this.totalSlides - 1);
+                            break;
+                    }
+                });
+
+                // Mouse movement to show/hide navigation
+                document.addEventListener('mousemove', () => this.showNavigation());
+
+                // Touch support for mobile
+                let touchStartX = 0;
+                document.addEventListener('touchstart', (e) => {
+                    touchStartX = e.touches[0].clientX;
+                });
+
+                document.addEventListener('touchend', (e) => {
+                    const touchEndX = e.changedTouches[0].clientX;
+                    const diff = touchStartX - touchEndX;
+
+                    if (Math.abs(diff) > 50) {
+                        if (diff > 0) {
+                            this.nextSlide();
+                        } else {
+                            this.prevSlide();
+                        }
+                    }
+                });
+            }
+
+            showNavigation() {
+                this.navigation.classList.add('visible');
+
+                clearTimeout(this.hideTimeout);
+                this.hideTimeout = setTimeout(() => {
+                    this.navigation.classList.remove('visible');
+                }, 3000);
+            }
+
+            nextSlide() {
+                if (this.currentSlide < this.totalSlides - 1) {
+                    this.currentSlide++;
+                    this.updateDisplay();
+                }
+            }
+
+            prevSlide() {
+                if (this.currentSlide > 0) {
+                    this.currentSlide--;
+                    this.updateDisplay();
+                }
+            }
+
+            goToSlide(index) {
+                if (index >= 0 && index < this.totalSlides) {
+                    this.currentSlide = index;
+                    this.updateDisplay();
+                }
+            }
+
+            updateDisplay() {
+                // Update slide visibility
+                this.slides.forEach((slide, index) => {
+                    slide.classList.remove('active');
+                    if (index === this.currentSlide) {
+                        slide.classList.add('active');
+                        // Restart animations for list items
+                        const listItems = slide.querySelectorAll('li');
+                        listItems.forEach(item => {
+                            item.style.animation = 'none';
+                            item.offsetHeight; // Trigger reflow
+                            item.style.animation = null;
+                        });
+                    }
+                });
+
+                // Update navigation buttons
+                this.prevBtn.disabled = this.currentSlide === 0;
+                this.nextBtn.disabled = this.currentSlide === this.totalSlides - 1;
+
+                // Update progress bar
+                const progress = ((this.currentSlide + 1) / this.totalSlides) * 100;
+                this.progressFill.style.width = `${progress}%`;
+
+                // Update slide counter
+                this.slideCounter.textContent = `${this.currentSlide + 1} / ${this.totalSlides}`;
+
+                // Show navigation when slide changes
+                this.showNavigation();
+            }
+        }
+
+        // Page Navigation System
+        class PageNavigator {
+            constructor() {
+                this.currentPage = 'home';
+                this.pages = {
+                    home: document.getElementById('home-page'),
+                    slideshow: document.getElementById('slideshow-page'),
+                    survey: document.getElementById('survey-page')
+                };
+                this.navLinks = document.querySelectorAll('.nav-link');
+                this.slideshow = null;
+
+                // Debug: Check if pages are loaded
+                console.log('Pages loaded:', this.pages);
+
+                this.init();
+            }
+
+            init() {
+                // Direct Google Drive download links (uc endpoint = direct download)
+                this.driveLinks = {
+                    extension: 'https://drive.google.com/uc?export=download&id=1ciOKcA3DpLp6qRocszszD1Jhz7chLu4I',
+                    module: 'https://drive.google.com/uc?export=download&id=1b2m93LdYwMhX9UQMfEC0eusZW6mwWZQN'
+                };
+                this.bindNavigationEvents();
+                this.initSurveyForm();
+            }
+
+            bindNavigationEvents() {
+                // Navigation menu clicks
+                this.navLinks.forEach(link => {
+                    link.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        const targetPage = link.getAttribute('data-page');
+                        this.showPage(targetPage);
+                    });
+                });
+
+                // Home page buttons
+                document.getElementById('downloadExtensionBtn').addEventListener('click', (e) => {
+                    e.preventDefault();
+                    this.showExtensionModal();
+                });
+                document.getElementById('downloadModuleBtn').addEventListener('click', (e) => {
+                    e.preventDefault();
+                    this.downloadModule();
+                });
+                document.getElementById('goToSurveyBtn').addEventListener('click', (e) => {
+                    e.preventDefault();
+                    this.showPage('survey');
+                });
+                document.getElementById('startPresentationBtn').addEventListener('click', (e) => {
+                    e.preventDefault();
+                    this.showPage('slideshow');
+                });
+                document.getElementById('skipToSurveyBtn').addEventListener('click', (e) => {
+                    e.preventDefault();
+                    this.showPage('survey');
+                });
+
+
+                // Slideshow navigation buttons - Add null checks
+                const backToHomeBtn = document.getElementById('backToHomeBtn');
+                const goToSurveyFromSlideBtn = document.getElementById('goToSurveyFromSlideBtn');
+
+                if (backToHomeBtn) {
+                    backToHomeBtn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        this.showPage('home');
+                    });
+                }
+
+                if (goToSurveyFromSlideBtn) {
+                    goToSurveyFromSlideBtn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        this.showPage('survey');
+                    });
+                }                    // Modal events
+                document.getElementById('closeExtensionModal').addEventListener('click', () => this.hideModal('extensionModal'));
+                document.getElementById('downloadExtensionLink').addEventListener('click', (e) => {
+                    e.preventDefault();
+                    // Open extension direct download in new tab
+                    window.open(this.driveLinks.extension, '_blank', 'noopener');
+                    this.hideModal('extensionModal');
+                });
+
+                // Success modal events
+                document.getElementById('backToHomeFromSuccess').addEventListener('click', () => {
+                    this.hideModal('successModal');
+                    this.showPage('home');
+                });
+                document.getElementById('viewPresentationFromSuccess').addEventListener('click', () => {
+                    this.hideModal('successModal');
+                    this.showPage('slideshow');
+                });
+            }
+
+            showPage(pageId) {
+                console.log('Showing page:', pageId);
+
+                // Validate pageId exists
+                if (!this.pages[pageId]) {
+                    console.error('Page not found:', pageId);
+                    return;
+                }
+
+                // Hide all pages
+                Object.values(this.pages).forEach(page => {
+                    if (page) {
+                        page.classList.remove('active');
+                    }
+                });
+
+                // Show target page
+                this.pages[pageId].classList.add('active');
+                console.log('Page activated:', pageId);
+
+                // Update navigation
+                this.navLinks.forEach(link => {
+                    link.classList.remove('active');
+                    if (link.getAttribute('data-page') === pageId) {
+                        link.classList.add('active');
+                    }
+                });
+
+                // Initialize slideshow if needed
+                if (pageId === 'slideshow' && !this.slideshow) {
+                    console.log('Initializing slideshow...');
+                    this.slideshow = new Slideshow();
+                } else if (pageId === 'slideshow' && this.slideshow) {
+                    this.slideshow.updateDisplay();
+                }
+
+                this.currentPage = pageId;
+
+                // Scroll to top
+                window.scrollTo(0, 0);
+            }
+
+            showExtensionModal() {
+                document.getElementById('extensionModal').classList.add('active');
+            }
+
+            hideModal(modalId) {
+                document.getElementById(modalId).classList.remove('active');
+            }
+
+            downloadModule() {
+                // Open module direct download in new tab
+                window.open(this.driveLinks.module, '_blank', 'noopener');
+                console.log('Opened module download link');
+            }
+
+            initSurveyForm() {
+                this.initStarRatings();
+                this.initEmojiRating();
+                this.initSlider();
+                this.initFormHandlers();
+                this.updateProgress();
+            }
+
+            initStarRatings() {
+                const starRatings = document.querySelectorAll('.star-rating');
+
+                starRatings.forEach(rating => {
+                    const stars = rating.querySelectorAll('.star');
+                    const ratingName = rating.getAttribute('data-rating');
+
+                    stars.forEach((star, index) => {
+                        star.addEventListener('click', () => {
+                            // Clear all stars in this rating
+                            stars.forEach(s => s.classList.remove('active'));
+
+                            // Set active stars up to clicked star
+                            for (let i = 0; i <= index; i++) {
+                                stars[i].classList.add('active');
+                            }
+
+                            // Store rating value
+                            rating.setAttribute('data-value', index + 1);
+                            this.updateProgress();
+                        });
+
+                        star.addEventListener('mouseenter', () => {
+                            stars.forEach(s => s.classList.remove('active'));
+                            for (let i = 0; i <= index; i++) {
+                                stars[i].classList.add('active');
+                            }
+                        });
+                    });
+
+                    rating.addEventListener('mouseleave', () => {
+                        const currentValue = rating.getAttribute('data-value') || 0;
+                        stars.forEach(s => s.classList.remove('active'));
+                        for (let i = 0; i < currentValue; i++) {
+                            stars[i].classList.add('active');
+                        }
+                    });
+                });
+            }
+
+            initEmojiRating() {
+                const emojiRating = document.getElementById('satisfactionRating');
+                const emojiOptions = emojiRating.querySelectorAll('.emoji-option');
+
+                emojiOptions.forEach(option => {
+                    option.addEventListener('click', () => {
+                        emojiOptions.forEach(opt => opt.classList.remove('selected'));
+                        option.classList.add('selected');
+                        emojiRating.setAttribute('data-value', option.getAttribute('data-value'));
+                        this.updateProgress();
+                    });
+                });
+            }
+
+            initSlider() {
+                const slider = document.getElementById('recommendationSlider');
+                const sliderValue = document.getElementById('sliderValue');
+
+                slider.addEventListener('input', () => {
+                    sliderValue.textContent = slider.value;
+                    this.updateProgress();
+                });
+            }
+
+            initFormHandlers() {
+                const form = document.getElementById('surveyForm');
+                const saveDraftBtn = document.getElementById('saveDraftBtn');
+                const resetFormBtn = document.getElementById('resetFormBtn');
+                const submitBtn = document.getElementById('submitSurveyBtn');
+
+                // Form input events for progress tracking
+                const inputs = form.querySelectorAll('input, textarea, select');
+                inputs.forEach(input => {
+                    input.addEventListener('input', () => this.updateProgress());
+                    input.addEventListener('change', () => this.updateProgress());
+                });
+
+                // Save draft
+                saveDraftBtn.addEventListener('click', () => {
+                    this.saveDraft();
+                });
+
+                // Reset form
+                resetFormBtn.addEventListener('click', () => {
+                    if (confirm('Apakah Anda yakin ingin mereset seluruh form? Data yang sudah diisi akan hilang.')) {
+                        this.resetForm();
+                    }
+                });
+
+                // Submit form
+                form.addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    this.submitSurvey();
+                });
+            }
+
+            updateProgress() {
+                const form = document.getElementById('surveyForm');
+                const requiredFields = form.querySelectorAll('input[required], textarea[required]');
+                const starRatings = form.querySelectorAll('.star-rating');
+                const quizQuestions = form.querySelectorAll('input[type="radio"]');
+                const emojiRating = document.getElementById('satisfactionRating');
+
+                let totalFields = requiredFields.length + starRatings.length + 5 + 1; // 5 quiz questions + emoji rating
+                let completedFields = 0;
+
+                // Check required text fields
+                requiredFields.forEach(field => {
+                    if (field.value.trim() !== '') {
+                        completedFields++;
+                    }
+                });
+
+                // Check star ratings
+                starRatings.forEach(rating => {
+                    if (rating.getAttribute('data-value')) {
+                        completedFields++;
+                    }
+                });
+
+                // Check quiz questions
+                const quizNames = ['quiz1', 'quiz2', 'quiz3', 'quiz4', 'quiz5'];
+                quizNames.forEach(name => {
+                    const checked = form.querySelector(`input[name="${name}"]:checked`);
+                    if (checked) {
+                        completedFields++;
+                    }
+                });
+
+                // Check emoji rating
+                if (emojiRating.getAttribute('data-value')) {
+                    completedFields++;
+                }
+
+                const progress = Math.round((completedFields / totalFields) * 100);
+                document.getElementById('surveyProgress').style.width = progress + '%';
+                document.getElementById('surveyProgressText').textContent = progress + '% selesai';
+            }
+
+            saveDraft() {
+                const formData = new FormData(document.getElementById('surveyForm'));
+                const data = Object.fromEntries(formData);
+
+                // Add star ratings
+                document.querySelectorAll('.star-rating').forEach(rating => {
+                    const name = rating.getAttribute('data-rating');
+                    const value = rating.getAttribute('data-value');
+                    if (value) {
+                        data[name] = value;
+                    }
+                });
+
+                // Add emoji rating
+                const emojiValue = document.getElementById('satisfactionRating').getAttribute('data-value');
+                if (emojiValue) {
+                    data.satisfaction = emojiValue;
+                }
+
+                console.log('Draft saved:', data);
+                alert('✅ Draft berhasil disimpan!');
+            }
+
+            resetForm() {
+                document.getElementById('surveyForm').reset();
+
+                // Reset star ratings
+                document.querySelectorAll('.star-rating').forEach(rating => {
+                    rating.removeAttribute('data-value');
+                    rating.querySelectorAll('.star').forEach(star => {
+                        star.classList.remove('active');
+                    });
+                });
+
+                // Reset emoji rating
+                document.getElementById('satisfactionRating').removeAttribute('data-value');
+                document.querySelectorAll('.emoji-option').forEach(opt => {
+                    opt.classList.remove('selected');
+                });
+
+                // Reset slider
+                document.getElementById('recommendationSlider').value = 5;
+                document.getElementById('sliderValue').textContent = '5';
+
+                this.updateProgress();
+                alert('📄 Form berhasil direset!');
+            }
+
+            submitSurvey() {
+                const form = document.getElementById('surveyForm');
+                const formData = new FormData(form);
+                const data = Object.fromEntries(formData);
+                // Tambahkan submissionId unik untuk identifikasi (timestamp + random)
+                data.submissionId = Date.now().toString() + '_' + Math.random().toString(36).slice(2, 10);
+
+                // Validate required fields
+                const requiredFields = form.querySelectorAll('input[required]');
+                let hasErrors = false;
+
+                requiredFields.forEach(field => {
+                    if (!field.value.trim()) {
+                        field.style.borderColor = 'var(--color-danger)';
+                        hasErrors = true;
+                    } else {
+                        field.style.borderColor = 'var(--color-border)';
+                    }
+                });
+
+                if (hasErrors) {
+                    alert('❌ Mohon lengkapi semua field yang wajib diisi (bertanda *)');
+                    return;
+                }
+
+                // Kumpulkan star ratings (unik)
+                document.querySelectorAll('.star-rating').forEach(rating => {
+                    const name = rating.getAttribute('data-rating');
+                    const value = rating.getAttribute('data-value');
+                    if (value) {
+                        data[name] = value;
+                    }
+                });
+
+                // Kumpulkan emoji rating
+                const emojiValue = document.getElementById('satisfactionRating').getAttribute('data-value');
+                if (emojiValue) {
+                    data.satisfaction = emojiValue;
+                }
+
+                // Tambah slider
+                const sliderEl = document.getElementById('recommendationSlider');
+                if (sliderEl) {
+                    data.recommendationScore = sliderEl.value;
+                }
+
+                // Endpoint Google Apps Script
+                const ENDPOINT = 'https://script.google.com/macros/s/AKfycbwPZ3FRYd2CesOrgS0LDsPEDNfmf8szCxa-dJGLXYOmAXTawrJzm-MxmAutlwEduus/exec';
+
+                // UI feedback: disable button
+                const submitBtn = document.getElementById('submitSurveyBtn');
+                const originalText = submitBtn ? submitBtn.textContent : '';
+                if (submitBtn) {
+                    submitBtn.disabled = true;
+                    submitBtn.textContent = 'Mengirim...';
+                }
+
+                // Metode iframe form POST untuk bypass CORS
+                const iframeId = 'surveyPostIframe';
+                let iframe = document.getElementById(iframeId);
+                if (!iframe) {
+                    iframe = document.createElement('iframe');
+                    iframe.style.display = 'none';
+                    iframe.name = iframeId;
+                    iframe.id = iframeId;
+                    document.body.appendChild(iframe);
+                }
+
+                // Bersihkan form lama
+                const existing = document.getElementById('surveyHiddenForm');
+                if (existing) existing.remove();
+
+                const hiddenForm = document.createElement('form');
+                hiddenForm.style.display = 'none';
+                hiddenForm.id = 'surveyHiddenForm';
+                hiddenForm.method = 'POST';
+                hiddenForm.action = ENDPOINT;
+                hiddenForm.target = iframeId;
+                Object.keys(data).forEach(key => {
+                    const input = document.createElement('input');
+                    input.type = 'hidden';
+                    input.name = key;
+                    input.value = data[key];
+                    hiddenForm.appendChild(input);
+                });
+                document.body.appendChild(hiddenForm);
+
+                let completed = false;
+                const completeSuccess = () => {
+                    if (completed) return; // Hindari multiple trigger
+                    completed = true;
+                    console.log('Survey stored (iframe):', data);
+                    document.getElementById('successModal').classList.add('active');
+                    form.reset();
+                    document.querySelectorAll('.star-rating').forEach(rating => {
+                        rating.removeAttribute('data-value');
+                        rating.querySelectorAll('.star').forEach(star => star.classList.remove('active'));
+                    });
+                    document.getElementById('satisfactionRating').removeAttribute('data-value');
+                    document.querySelectorAll('.emoji-option').forEach(opt => opt.classList.remove('selected'));
+                    const slider = document.getElementById('recommendationSlider');
+                    const sliderValue = document.getElementById('sliderValue');
+                    if (slider) slider.value = 5;
+                    if (sliderValue) sliderValue.textContent = '5';
+                    this.updateProgress();
+                    if (submitBtn) {
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = originalText;
+                    }
+                };
+
+                // Timeout fallback jika onload tidak dipanggil (Apps Script kadang tidak merender konten jelas)
+                const timeout = setTimeout(() => {
+                    if (!completed) {
+                        console.warn('Iframe timeout fallback triggered');
+                        completeSuccess();
+                    }
+                }, 4000);
+
+                iframe.onload = () => {
+                    clearTimeout(timeout);
+                    completeSuccess();
+                };
+
+                try {
+                    hiddenForm.submit();
+                } catch (e) {
+                    clearTimeout(timeout);
+                    console.error('Iframe form submit error:', e);
+                    alert('❌ Gagal mengirim data (iframe).');
+                    if (submitBtn) {
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = originalText;
+                    }
+                }
+            }
+        }
+
+        // Initialize slideshow when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new PageNavigator();
+        });
+    </script>
+</body>
+
+</html>

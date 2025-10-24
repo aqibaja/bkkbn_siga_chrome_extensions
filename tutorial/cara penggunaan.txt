@@ -1,0 +1,74 @@
+SIGA excel Downloader
+
+Contoh penggunaan : 
+
+Periode : Mei
+Kab/Kota : 06 - ACEH BESAR
+KEC : 01 - LHOONG
+Fakes : puskesmas lhoong
+Jika ada pop up pilih : rekap atau detail (contoh untuk laporan catin bulanan)
+
+Berikut cara installnya:
+1. Buka chrome://extensions/ di tab baru.
+2. Aktifkan Mode Pengembang (Developer Mode).
+3. Klik tombol Muat yang tidak dikemas (Load unpacked).
+4. Pilih folder ekstensi yang telah diekstrak (unzipped).
+5. Ekstensi akan terpasang di browser pengguna.
+
+Contoh url catin bulanan :
+https://newsiga-siga.bkkbn.go.id/#/catinDetail/Catin-Bulanan/Tabel1
+https://newsiga-siga.bkkbn.go.id/#/catinDetail/Catin-Bulanan/Tabel2
+https://newsiga-siga.bkkbn.go.id/#/catinDetail/Catin-Bulanan/Tabel3
+https://newsiga-siga.bkkbn.go.id/#/catinDetail/Catin-Bulanan/Tabel4
+
+
+Contoh url tabel yanKB :
+
+
+https://newsiga-siga.bkkbn.go.id/#/yankbDetail/YanKB-Bulanan-Kec/Tabel1
+https://newsiga-siga.bkkbn.go.id/#/yankbDetail/YanKB-Bulanan-Kec/Tabel2
+https://newsiga-siga.bkkbn.go.id/#/yankbDetail/YanKB-Bulanan-Kec/Tabel3
+https://newsiga-siga.bkkbn.go.id/#/yankbDetail/YanKB-Bulanan-Kec/Tabel3A
+https://newsiga-siga.bkkbn.go.id/#/yankbDetail/YanKB-Bulanan-Kec/Tabel3B
+https://newsiga-siga.bkkbn.go.id/#/yankbDetail/YanKB-Bulanan-Kec/Tabel3C
+https://newsiga-siga.bkkbn.go.id/#/yankbDetail/YanKB-Bulanan-Kec/Tabel3D
+https://newsiga-siga.bkkbn.go.id/#/yankbDetail/YanKB-Bulanan-Kec/Tabel3E
+https://newsiga-siga.bkkbn.go.id/#/yankbDetail/YanKB-Bulanan-Kec/Tabel3F
+https://newsiga-siga.bkkbn.go.id/#/yankbDetail/YanKB-Bulanan-Kec/Tabel4
+https://newsiga-siga.bkkbn.go.id/#/yankbDetail/YanKB-Bulanan-Kec/Tabel5
+https://newsiga-siga.bkkbn.go.id/#/yankbDetail/YanKB-Bulanan-Kec/Tabel6
+https://newsiga-siga.bkkbn.go.id/#/yankbDetail/YanKB-Bulanan-Kec/Tabel7
+https://newsiga-siga.bkkbn.go.id/#/yankbDetail/YanKB-Bulanan-Kec/Tabel8
+https://newsiga-siga.bkkbn.go.id/#/yankbDetail/YanKB-Bulanan-Kec/Tabel9
+https://newsiga-siga.bkkbn.go.id/#/yankbDetail/YanKB-Bulanan-Kec/Tabel9A
+https://newsiga-siga.bkkbn.go.id/#/yankbDetail/YanKB-Bulanan-Kec/Tabel9B
+https://newsiga-siga.bkkbn.go.id/#/yankbDetail/YanKB-Bulanan-Kec/Tabel9C
+https://newsiga-siga.bkkbn.go.id/#/yankbDetail/YanKB-Bulanan-Kec/Tabel9D
+https://newsiga-siga.bkkbn.go.id/#/yankbDetail/YanKB-Bulanan-Kec/Tabel9E
+https://newsiga-siga.bkkbn.go.id/#/yankbDetail/YanKB-Bulanan-Kec/Tabel9F
+https://newsiga-siga.bkkbn.go.id/#/yankbDetail/YanKB-Bulanan-Kec/Tabel10
+https://newsiga-siga.bkkbn.go.id/#/yankbDetail/YanKB-Bulanan-Kec/Tabel10A
+https://newsiga-siga.bkkbn.go.id/#/yankbDetail/YanKB-Bulanan-Kec/Tabel10B
+https://newsiga-siga.bkkbn.go.id/#/yankbDetail/YanKB-Bulanan-Kec/Tabel10C
+https://newsiga-siga.bkkbn.go.id/#/yankbDetail/YanKB-Bulanan-Kec/Tabel10D
+https://newsiga-siga.bkkbn.go.id/#/yankbDetail/YanKB-Bulanan-Kec/Tabel10E
+https://newsiga-siga.bkkbn.go.id/#/yankbDetail/YanKB-Bulanan-Kec/Tabel10F
+https://newsiga-siga.bkkbn.go.id/#/yankbDetail/YanKB-Bulanan-Kec/Tabel11
+https://newsiga-siga.bkkbn.go.id/#/yankbDetail/YanKB-Bulanan-Kec/Tabel11A
+https://newsiga-siga.bkkbn.go.id/#/yankbDetail/YanKB-Bulanan-Kec/Tabel11ALanjut
+https://newsiga-siga.bkkbn.go.id/#/yankbDetail/YanKB-Bulanan-Kec/Tabel1Lanjut
+https://newsiga-siga.bkkbn.go.id/#/yankbDetail/YanKB-Bulanan-Kec/Tabel12
+https://newsiga-siga.bkkbn.go.id/#/yankbDetail/YanKB-Bulanan-Kec/Tabel12A
+https://newsiga-siga.bkkbn.go.id/#/yankbDetail/YanKB-Bulanan-Kec/Tabel1ALanjut
+https://newsiga-siga.bkkbn.go.id/#/yankbDetail/YanKB-Bulanan-Kec/Tabel12Lanjut
+https://newsiga-siga.bkkbn.go.id/#/yankbDetail/YanKB-Bulanan-Kec/Tabel13
+https://newsiga-siga.bkkbn.go.id/#/yankbDetail/YanKB-Bulanan-Kec/Tabel13A
+https://newsiga-siga.bkkbn.go.id/#/yankbDetail/YanKB-Bulanan-Kec/Tabel13ALanjut
+https://newsiga-siga.bkkbn.go.id/#/yankbDetail/YanKB-Bulanan-Kec/Tabel13Lanjut
+https://newsiga-siga.bkkbn.go.id/#/yankbDetail/YanKB-Bulanan-Kec/Tabel14
+https://newsiga-siga.bkkbn.go.id/#/yankbDetail/YanKB-Bulanan-Kec/Tabel15
+https://newsiga-siga.bkkbn.go.id/#/yankbDetail/YanKB-Bulanan-Kec/Tabel16
+https://newsiga-siga.bkkbn.go.id/#/yankbDetail/YanKB-Bulanan-Kec/Tabel17
+https://newsiga-siga.bkkbn.go.id/#/yankbDetail/YanKB-Bulanan-Kec/Tabel18
+https://newsiga-siga.bkkbn.go.id/#/yankbDetail/YanKB-Bulanan-Kec/Tabel19
+
