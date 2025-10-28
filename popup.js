@@ -149,9 +149,11 @@ function updateKecamatanDropdown(tabName) {
   }
 }
 
-// Inisialisasi city checkbox
-renderCheckboxes('cities-tahunan', 'tahunan');
-renderCheckboxes('cities-bulanan', 'bulanan');
+// Inisialisasi city checkbox (hanya jika tidak dalam test environment)
+if (typeof jest === 'undefined') {
+  renderCheckboxes('cities-tahunan', 'tahunan');
+  renderCheckboxes('cities-bulanan', 'bulanan');
+}
 
 // Tab switching
 const tabButtons = document.querySelectorAll('.tab-button');
@@ -168,10 +170,13 @@ tabButtons.forEach(button => {
 
 // Select All functionality
 function setupSelectAll(buttonId, tabName) {
-  document.getElementById(buttonId).addEventListener('click', () => {
-    const checkboxes = document.querySelectorAll(`#cities-${tabName} input[type="checkbox"]`);
-    checkboxes.forEach(checkbox => { checkbox.checked = true; });
-  });
+  const button = document.getElementById(buttonId);
+  if (button) {
+    button.addEventListener('click', () => {
+      const checkboxes = document.querySelectorAll(`#cities-${tabName} input[type="checkbox"]`);
+      checkboxes.forEach(checkbox => { checkbox.checked = true; });
+    });
+  }
 }
 
 // Fungsi untuk render Download Tab
@@ -276,35 +281,48 @@ function initializeDownloadProgress(downloadQueue) {
 }
 
 // Tab switching untuk tab Download
-tabButtons.forEach(button => {
-  button.addEventListener('click', () => {
-    const tabName = button.getAttribute('data-tab');
-    tabButtons.forEach(btn => btn.classList.remove('active'));
-    tabContents.forEach(content => content.classList.remove('active'));
-    button.classList.add('active');
-    document.getElementById(`${tabName}-content`).classList.add('active');
+if (typeof jest === 'undefined') {
+  tabButtons.forEach(button => {
+    button.addEventListener('click', () => {
+      const tabName = button.getAttribute('data-tab');
+      tabButtons.forEach(btn => btn.classList.remove('active'));
+      tabContents.forEach(content => content.classList.remove('active'));
+      button.classList.add('active');
+      document.getElementById(`${tabName}-content`).classList.add('active');
 
-    // Jika tab download diklik, render progress
-    if (tabName === 'download') renderDownloadTab();
+      // Jika tab download diklik, render progress
+      if (tabName === 'download') renderDownloadTab();
+    });
   });
-});
+}
 
-setupSelectAll('select-all-tahunan', 'tahunan');
-setupSelectAll('select-all-bulanan', 'bulanan');
+if (typeof jest === 'undefined') {
+  setupSelectAll('select-all-tahunan', 'tahunan');
+  setupSelectAll('select-all-bulanan', 'bulanan');
+}
 
 // Reset functionality
 function setupReset(buttonId, tabName) {
-  document.getElementById(buttonId).addEventListener('click', () => {
-    const checkboxes = document.querySelectorAll(`#cities-${tabName} input[type="checkbox"]`);
-    checkboxes.forEach(checkbox => { checkbox.checked = false; });
-  });
+  const button = document.getElementById(buttonId);
+  if (button) {
+    button.addEventListener('click', () => {
+      const checkboxes = document.querySelectorAll(`#cities-${tabName} input[type="checkbox"]`);
+      checkboxes.forEach(checkbox => { checkbox.checked = false; });
+    });
+  }
 }
-setupReset('reset-tahunan', 'tahunan');
-setupReset('reset-bulanan', 'bulanan');
+
+if (typeof jest === 'undefined') {
+  setupReset('reset-tahunan', 'tahunan');
+  setupReset('reset-bulanan', 'bulanan');
+}
 
 // Form submit handlers
 function setupFormSubmit(formId, tabName) {
-  document.getElementById(formId).addEventListener('submit', (e) => {
+  const form = document.getElementById(formId);
+  if (!form) return; // Skip jika form tidak ada (test environment)
+
+  form.addEventListener('submit', (e) => {
     e.preventDefault();
 
     try {
@@ -401,11 +419,27 @@ function setupFormSubmit(formId, tabName) {
     }
   });
 }
-setupFormSubmit('tahunan-form', 'tahunan');
-setupFormSubmit('bulanan-form', 'bulanan');
+
+if (typeof jest === 'undefined') {
+  setupFormSubmit('tahunan-form', 'tahunan');
+  setupFormSubmit('bulanan-form', 'bulanan');
+}
 
 
 // Listener untuk auto-refresh download tab
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (msg.action === "refresh_download_status") renderDownloadTab();
-});
+if (typeof chrome !== 'undefined' && chrome.runtime) {
+  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    if (msg.action === "refresh_download_status") renderDownloadTab();
+  });
+}
+
+// digunakan untuk unit test
+module.exports = {
+  safeUrlHash,
+  renderCheckboxes,
+  updateKecamatanDropdown,
+  renderDownloadTab,
+  resetDownloadProgress,
+  switchToDownloadTab,
+  initializeDownloadProgress
+};
