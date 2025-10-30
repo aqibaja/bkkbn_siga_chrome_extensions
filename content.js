@@ -18,6 +18,18 @@
     return document.querySelectorAll('.css-yk16xz-control')[fallbackIndex] || null;
   }
 
+  // Tunggu hingga dropdown control muncul (untuk kasus SPA yang render async)
+  async function waitForDropdown(labelText, fallbackIndex = 0, timeout = 12000, interval = 300) {
+    const start = Date.now();
+    let control;
+    while (Date.now() - start < timeout) {
+      control = findDropdownHybrid(labelText, fallbackIndex);
+      if (control) return control;
+      await wait(interval);
+    }
+    return null; // biarkan caller yang handle fail
+  }
+
   // Buat hash unik dari URL (bisa pakai base64 atau hanya ambil bagian unik URL)
   function getUrlHash(url) {
     try {
@@ -91,72 +103,30 @@
     throw new Error("❌ Dropdown option tidak muncul dalam waktu cukup.");
   }
 
-  // Fungsi utama end-to-end
-  async function bukaDanPilihPadaDropdown(control, targetTextRaw) {
+  // Konsolidasi fungsi pemilihan dropdown + status failure immediate
+  async function bukaDanPilihPadaDropdown(control, targetTextRaw, url = null, kota = '', currentIndex = 0, downloadQueue = null) {
+    const hash = url ? getUrlHash(url) : null;
     if (!control) {
-      alert("❌ Dropdown tidak ditemukan! Proses dibatalkan.");
-      throw new Error("❌ Dropdown tidak ditemukan.");
-    }
-
-    klikDropdown(control);
-    await wait(400); // waktu animasi dropdown jika ada
-
-    // Coba MutationObserver dulu
-    let options;
-    try {
-      options = await waitForDropdownOptions();
-    } catch {
-      try {
-        // Fallback polling jika observer gagal
-        options = await pollingDropdownOptions();
-      } catch (e) {
-        alert(e.message);
-        throw e;
+      if (!url || !downloadQueue) { // pemanggilan lama tanpa context
+        console.error(`Dropdown '${targetTextRaw}' tidak ditemukan (context tidak lengkap).`);
+        return false;
       }
+      await markFail(hash, url, kota, downloadQueue, currentIndex, `Dropdown '${targetTextRaw}' tidak ditemukan`);
+      alert(`❌ Dropdown untuk "${targetTextRaw}" tidak ditemukan. Proses dibatalkan.`);
+      throw new Error(`Dropdown '${targetTextRaw}' tidak ditemukan.`);
     }
 
-    // Cek dan klik opsi yang cocok (fuzzy search & log jika tidak ketemu)
-    const userValue = targetTextRaw.trim().replace(/\u2013|\u2014/g, '-').toLowerCase();
-    let found = false;
-    for (const opt of options) {
-      if (opt.textContent.trim().toLowerCase().includes(userValue)) {
-        opt.scrollIntoView({ behavior: "smooth" });
-        opt.click();
-        found = true;
-        break;
-      }
-    }
-
-    if (!found) {
-      // Debug log opsi untuk pemecahan masalah
-      const opsiList = Array.from(options).map(o => o.textContent.trim());
-      alert(`❌ Opsi "${targetTextRaw}" tidak ditemukan!\nDaftar opsi: ${opsiList.join(", ")}`);
-      throw new Error(`❌ Opsi "${targetTextRaw}" tidak ditemukan.`);
-    }
-    await wait(200);
-    // lanjut ke proses berikutnya
-  }
-
-
-  // Pilih dropdown tertentu dan select targetTextRaw
-  async function bukaDanPilihPadaDropdown(control, targetTextRaw, url, kota, currentIndex, downloadQueue) {
-    if (!control) {
-      alert("❌ Dropdown tidak ditemukan! Proses dibatalkan.");
-      throw new Error("❌ Dropdown tidak ditemukan");
-    }
-
-    const userValue = targetTextRaw.trim().replace(/\u2013|\u2014/g, '-').toLowerCase();
-    control.scrollIntoView();
+    const userValue = (targetTextRaw || '').trim().replace(/\u2013|\u2014/g, '-').toLowerCase();
+    control.scrollIntoView({ behavior: 'smooth' });
     control.click();
     await wait(250);
     control.focus();
-    control.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "ArrowDown", code: "ArrowDown" }));
+    control.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'ArrowDown', code: 'ArrowDown' }));
 
-    // Poll & fuzzy match opsi dropdown
+    // Poll opsi dengan fuzzy match
     const maxTries = 30;
-    let tries = 0;
     let opsi = null;
-    while (tries < maxTries) {
+    for (let tries = 0; tries < maxTries; tries++) {
       opsi = [...document.querySelectorAll('.css-yt9ioa-option, .css-1n7v3ny-option, .css-9gakcf-option')].find(el => {
         const textOption = el.textContent.trim().replace(/\u2013|\u2014/g, '-').toLowerCase();
         return (
@@ -167,41 +137,42 @@
       });
       if (opsi) break;
       await wait(100);
-      tries++;
     }
 
-    if (opsi) {
-      opsi.click();
-      console.log(`✅ Berhasil pilih (fuzzy match) "${targetTextRaw}" => "${opsi.textContent.trim()}"`);
-      await wait(200); // waktu buffer
-      return true;
+    if (!opsi) {
+      if (!url || !downloadQueue) { // pemanggilan lama tanpa context
+        console.error(`Opsi '${targetTextRaw}' tidak ditemukan (context tidak lengkap).`);
+        return false;
+      }
+      await markFail(hash, url, kota, downloadQueue, currentIndex, `Opsi '${targetTextRaw}' tidak ditemukan`);
+      alert(`❌ Opsi "${targetTextRaw}" tidak ditemukan. Proses dihentikan.`);
+      throw new Error(`Opsi '${targetTextRaw}' tidak ditemukan.`);
     }
 
-    // PATCH: Jika gagal, update status ke storage dan alert
-    alert(`❌ Gagal menemukan opsi/fuzzy "${targetTextRaw}". Proses download otomatis dibatalkan.`);
+    opsi.click();
+    console.log(`✅ Berhasil pilih (fuzzy) '${targetTextRaw}' => '${opsi.textContent.trim()}'`);
+    await wait(200);
+    return true;
+  }
 
-    // Ambil & update status download progress ke chrome.storage.local
-    chrome.storage.local.get([`tabdownload_${getUrlHash(url)}`], function (result) {
-      let existing = result[`tabdownload_${getUrlHash(url)}`] || {
-        url: url,
-        status: "downloading",
-        totalFiles: downloadQueue.length,
-        filesCompleted: 0,
-        fileAkhir: ""
-      };
-
-      // Update progress
-      existing.filesCompleted = currentIndex + 1;
-      existing.fileAkhir = kota || "Provinsi";
-      if (currentIndex >= downloadQueue.length - 1) existing.status = "fail";
-
-      chrome.storage.local.set({
-        [`tabdownload_${getUrlHash(url)}`]: existing
+  async function markFail(hash, url, kota, downloadQueue, currentIndex, reason) {
+    return new Promise(resolve => {
+      chrome.storage.local.get([`tabdownload_${hash}`], result => {
+        let existing = result[`tabdownload_${hash}`] || {
+          url,
+          status: 'downloading',
+          totalFiles: (downloadQueue && Array.isArray(downloadQueue)) ? downloadQueue.length : 1,
+          filesCompleted: currentIndex,
+          fileAkhir: kota || 'Provinsi'
+        };
+        existing.status = 'fail';
+        existing.fileAkhir = `${existing.fileAkhir} (FAIL: ${reason})`;
+        chrome.storage.local.set({ [`tabdownload_${hash}`]: existing }, () => {
+          chrome.runtime.sendMessage({ action: 'refresh_download_status' });
+          resolve();
+        });
       });
-      chrome.runtime.sendMessage({ action: "refresh_download_status" });
     });
-
-    throw new Error(`❌ Tidak ketemu opsi fuzzy untuk "${targetTextRaw}"`);
   }
 
 
@@ -209,7 +180,7 @@
   // === HANDLE POPUP, STORAGE, DLL (kode lama tetap) ===
 
   // Fitur lama: Handle popup Rekap/Detail
-  async function handlePopup(reportType) {
+  async function handlePopup(reportType, url, kota, downloadQueue, currentIndex) {
     let tries = 0;
     const maxTries = 5;
     while (tries < maxTries) {
@@ -224,12 +195,13 @@
         });
         console.log("🔍 Report type requested:", reportType);
         console.log(reportType.toLowerCase() === "rekap" && rekapButton);
+        const hash = getUrlHash(url);
         if (reportType.toLowerCase() === "rekap" && rekapButton) {
           rekapButton.click();
           console.log("✅ Klik tombol Rekap");
           // Simpan status download untuk tab Download Progress
-          chrome.storage.local.get([`tabdownload_${getUrlHash(url)}`], function (result) {
-            let existing = result[`tabdownload_${getUrlHash(url)}`] || {
+          chrome.storage.local.get([`tabdownload_${hash}`], function (result) {
+            let existing = result[`tabdownload_${hash}`] || {
               url: url,
               status: "downloading",
               totalFiles: downloadQueue.length, // total kota/file untuk URL ini
@@ -243,7 +215,7 @@
             if (currentIndex >= downloadQueue.length - 1) existing.status = "success";
 
             chrome.storage.local.set({
-              [`tabdownload_${getUrlHash(url)}`]: existing
+              [`tabdownload_${hash}`]: existing
             });
             chrome.runtime.sendMessage({ action: "refresh_download_status" });
           });
@@ -251,8 +223,8 @@
           detailButton.click();
           console.log("✅ Klik tombol Detail");
           // Simpan status download untuk tab Download Progress
-          chrome.storage.local.get([`tabdownload_${getUrlHash(url)}`], function (result) {
-            let existing = result[`tabdownload_${getUrlHash(url)}`] || {
+          chrome.storage.local.get([`tabdownload_${hash}`], function (result) {
+            let existing = result[`tabdownload_${hash}`] || {
               url: url,
               status: "downloading",
               totalFiles: downloadQueue.length, // total kota/file untuk URL ini
@@ -266,7 +238,7 @@
             if (currentIndex >= downloadQueue.length - 1) existing.status = "success";
 
             chrome.storage.local.set({
-              [`tabdownload_${getUrlHash(url)}`]: existing
+              [`tabdownload_${hash}`]: existing
             });
             chrome.runtime.sendMessage({ action: "refresh_download_status" });
           });
@@ -274,8 +246,8 @@
           alert("❌ Jenis laporan tidak valid atau tombol Rekap/Detail tidak ditemukan. Proses dibatalkan.");
           console.error("❌ Tombol Rekap atau Detail tidak ditemukan");
           // Simpan status download untuk tab Download Progress
-          chrome.storage.local.get([`tabdownload_${getUrlHash(url)}`], function (result) {
-            let existing = result[`tabdownload_${getUrlHash(url)}`] || {
+          chrome.storage.local.get([`tabdownload_${hash}`], function (result) {
+            let existing = result[`tabdownload_${hash}`] || {
               url: url,
               status: "downloading",
               totalFiles: downloadQueue.length, // total kota/file untuk URL ini
@@ -286,10 +258,10 @@
             // Update progress
             existing.filesCompleted = currentIndex + 1;
             existing.fileAkhir = kota || "Provinsi";
-            if (currentIndex >= downloadQueue.length - 1) existing.status = "fail";
+            existing.status = "fail"; // immediate fail
 
             chrome.storage.local.set({
-              [`tabdownload_${getUrlHash(url)}`]: existing
+              [`tabdownload_${hash}`]: existing
             });
             chrome.runtime.sendMessage({ action: "refresh_download_status" });
           });
@@ -302,6 +274,7 @@
     if (tries >= maxTries) {
       alert("⚠️ Popup tidak muncul setelah menunggu. Proses dibatalkan.");
       console.warn("⚠️ Popup tidak muncul setelah menunggu");
+      await markFail(getUrlHash(url), url, kota, downloadQueue, currentIndex, 'Popup tidak muncul');
     }
   }
 
@@ -318,7 +291,13 @@
     return;
   }
 
-  const { downloadQueue, currentIndex = 0, periode, selectedCities, kecamatan, faskes, jenisLaporan, tahun, desa, rw, sasaran } = storage;
+  // Jika dibatalkan, segera berhenti
+  if (storage.cancelled) {
+    console.log('🛑 Automation dibatalkan untuk tab ini, menghentikan eksekusi.');
+    return;
+  }
+
+  const { downloadQueue, currentIndex = 0, periode, selectedCities, kecamatan, faskes, jenisLaporan, tahun, desa, rw, sasaran, retryCount = 0 } = storage;
 
   if (!downloadQueue || currentIndex >= downloadQueue.length) {
     console.log("✅ Semua download selesai untuk tab ini");
@@ -327,29 +306,84 @@
 
   // Proses utama automation per queue
   const { kota, url } = downloadQueue[currentIndex];
-  console.log(`🚀 Memproses: ${kota} - ${url}`);
+  console.log(`🚀 Memproses kota ${currentIndex + 1}/${downloadQueue.length}: ${kota} - ${url}`);
+
+  // Jika retry, log info
+  if (retryCount > 0) {
+    console.log(`♻️ Retry ke-${retryCount} untuk kota: ${kota}`);
+  }
+
   await wait(2000);
 
   const isTahunan = storage.periode && /^\d{4}$/.test(storage.periode);
 
   // Pilih Periode
-  const periodeDropdown = findDropdownHybrid("Periode", 0);
-  if (periodeDropdown && periode) await bukaDanPilihPadaDropdown(periodeDropdown, periode);
-  else console.error('❌ Dropdown Periode tidak ditemukan');
+  const periodeDropdown = await waitForDropdown("Periode", 0);
+  if (periodeDropdown && periode) {
+    await bukaDanPilihPadaDropdown(periodeDropdown, periode, url, kota, currentIndex, downloadQueue);
+  } else if (periode) {
+    console.error('❌ Dropdown Periode tidak ditemukan (timeout)');
+    // Retry sekali dengan refresh jika ini percobaan pertama untuk kota ini
+    if (retryCount === 0) {
+      console.log(`🔄 Retry kota ${currentIndex + 1} (${kota}): refresh halaman...`);
+      await chrome.storage.local.set({
+        [key]: { ...storage, retryCount: 1 } // Tetap di currentIndex yang sama
+      });
+      setTimeout(() => location.reload(), 1000);
+      return;
+    } else {
+      console.error(`❌ Gagal menemukan dropdown setelah retry untuk kota: ${kota}`);
+      await markFail(getUrlHash(url), url, kota, downloadQueue, currentIndex, 'Dropdown Periode tidak ditemukan setelah retry');
+      // Lanjut ke kota berikutnya
+      const nextIndex = currentIndex + 1;
+      await chrome.storage.local.set({ [key]: { ...storage, currentIndex: nextIndex, retryCount: 0 } });
+      const next = downloadQueue[nextIndex];
+      if (next) {
+        setTimeout(() => {
+          chrome.runtime.sendMessage({ action: "navigateAndReload", url: next.url });
+        }, 1000);
+      }
+      return;
+    }
+  }
 
   // Pilih Tahun (jika ada, misal di mode bulanan)
   await wait(1000);
   if (tahun) {
-    const tahunDropdown = findDropdownHybrid("Tahun", 1);
-    if (tahunDropdown) await bukaDanPilihPadaDropdown(tahunDropdown, tahun);
-    else console.error('❌ Dropdown Tahun tidak ditemukan');
+    const tahunDropdown = await waitForDropdown("Tahun", 1);
+    if (tahunDropdown) await bukaDanPilihPadaDropdown(tahunDropdown, tahun, url, kota, currentIndex, downloadQueue);
+    else console.error('❌ Dropdown Tahun tidak ditemukan (timeout)');
   }
 
   // Pilih Kota/Kab
   await wait(1000);
   if (kota) {
-    const kotaDropdown = findDropdownHybrid("Kab/Kota", isTahunan ? 1 : 2);
-    const result = await bukaDanPilihPadaDropdown(kotaDropdown, kota);
+    const kotaDropdown = await waitForDropdown("Kab/Kota", isTahunan ? 1 : 2);
+    if (!kotaDropdown) {
+      console.error('❌ Dropdown Kab/Kota tidak ditemukan');
+      if (retryCount === 0) {
+        console.log(`🔄 Retry kota ${currentIndex + 1} (${kota}): refresh halaman...`);
+        await chrome.storage.local.set({
+          [key]: { ...storage, retryCount: 1 } // Tetap di currentIndex yang sama
+        });
+        setTimeout(() => location.reload(), 1000);
+        return;
+      } else {
+        console.error(`❌ Gagal menemukan dropdown Kab/Kota setelah retry untuk: ${kota}`);
+        await markFail(getUrlHash(url), url, kota, downloadQueue, currentIndex, 'Dropdown Kab/Kota tidak ditemukan setelah retry');
+        // Lanjut ke kota berikutnya
+        const nextIndex = currentIndex + 1;
+        await chrome.storage.local.set({ [key]: { ...storage, currentIndex: nextIndex, retryCount: 0 } });
+        const next = downloadQueue[nextIndex];
+        if (next) {
+          setTimeout(() => {
+            chrome.runtime.sendMessage({ action: "navigateAndReload", url: next.url });
+          }, 1000);
+        }
+        return;
+      }
+    }
+    const result = await bukaDanPilihPadaDropdown(kotaDropdown, kota, url, kota, currentIndex, downloadQueue);
     if (result === false) return; // Jangan lanjut
     await wait(1200);
   } else {
@@ -359,8 +393,8 @@
   // Pilih Kecamatan
   await wait(1000);
   if (kecamatan) {
-    const kecDropdown = findDropdownHybrid("Kecamatan", isTahunan ? 2 : 3);
-    const result = await bukaDanPilihPadaDropdown(kecDropdown, kecamatan);
+    const kecDropdown = await waitForDropdown("Kecamatan", isTahunan ? 2 : 3);
+    const result = await bukaDanPilihPadaDropdown(kecDropdown, kecamatan, url, kota, currentIndex, downloadQueue);
     if (result === false) return; // Jangan lanjut
     await wait(1200);
   }
@@ -375,7 +409,7 @@
   // }
   await wait(1000);
   if (desa) {
-    const desaDropdown = findDropdownHybrid("Desa/Kel", isTahunan ? 3 : 4);
+    const desaDropdown = await waitForDropdown("Desa/Kel", isTahunan ? 3 : 4);
     if (desaDropdown) {
       desaDropdown.scrollIntoView();
       // PATCH PENTING: klik hingga benar-benar membuka opsi Desa
@@ -387,7 +421,7 @@
           .map(el => el.textContent.trim())
       );
       // Baru lakukan pemilihan dengan fuzzy
-      const result = await bukaDanPilihPadaDropdown(desaDropdown, desa);
+      const result = await bukaDanPilihPadaDropdown(desaDropdown, desa, url, kota, currentIndex, downloadQueue);
       if (result === false) return;
     } else {
       alert("❌ Dropdown Desa/Kel tidak ditemukan. Proses dibatalkan.");
@@ -397,16 +431,16 @@
   // Pilih RW (tahunan, jika ada)
   await wait(1000);
   if (rw) {
-    const rwDropdown = findDropdownHybrid("RW", isTahunan ? 4 : 5);
-    const result = await bukaDanPilihPadaDropdown(rwDropdown, rw);
+    const rwDropdown = await waitForDropdown("RW", isTahunan ? 4 : 5);
+    const result = await bukaDanPilihPadaDropdown(rwDropdown, rw, url, kota, currentIndex, downloadQueue);
     if (result === false) return; // Jangan lanjut
     await wait(1200);
   }
   // Pilih Sasaran (tahunan, jika ada)
   await wait(1000);
   if (sasaran) {
-    const sasaranDropdown = findDropdownHybrid("Kelompok Sasaran", isTahunan ? 5 : 6);
-    const result = await bukaDanPilihPadaDropdown(sasaranDropdown, sasaran);
+    const sasaranDropdown = await waitForDropdown("Kelompok Sasaran", isTahunan ? 5 : 6);
+    const result = await bukaDanPilihPadaDropdown(sasaranDropdown, sasaran, url, kota, currentIndex, downloadQueue);
     if (result === false) return; // Jangan lanjut
     await wait(1200);
   }
@@ -414,8 +448,8 @@
   // Pilih Faskes (bulanan, jika ada)
   await wait(1000);
   if (faskes) {
-    const faskesDropdown = findDropdownHybrid("Faskes", 4);
-    if (faskesDropdown) await bukaDanPilihPadaDropdown(faskesDropdown, faskes);
+    const faskesDropdown = await waitForDropdown("Faskes", 4);
+    if (faskesDropdown) await bukaDanPilihPadaDropdown(faskesDropdown, faskes, url, kota, currentIndex, downloadQueue);
     else console.error('❌ Dropdown Faskes tidak ditemukan');
     await wait(1200);
   }
@@ -431,7 +465,7 @@
     console.log("✅ Klik tombol Cetak Excel");
     await wait(900);
     if (jenisLaporan) {
-      await handlePopup(jenisLaporan);
+      await handlePopup(jenisLaporan, url, kota, downloadQueue, currentIndex);
     } else {
       // Simpan status download untuk tab Download Progress
       chrome.storage.local.get([`tabdownload_${getUrlHash(url)}`], function (result) {
@@ -460,15 +494,36 @@
   }
 
   // Next queue automation
-  const nextIndex = currentIndex + 1;
-  await chrome.storage.local.set({ [key]: { ...storage, currentIndex: nextIndex } });
-  const next = downloadQueue[nextIndex];
-  if (next) {
-    console.log("⏳ Menunggu sebelum lanjut ke kota berikutnya...");
-    setTimeout(() => {
-      chrome.runtime.sendMessage({ action: "navigateAndReload", url: next.url });
-    }, 1000);
-  } else {
-    console.log("🎉 Semua proses selesai untuk tab ini");
+  try {
+    const nextIndex = currentIndex + 1;
+    // Reset retry count saat pindah ke item berikutnya
+    await chrome.storage.local.set({ [key]: { ...storage, currentIndex: nextIndex, retryCount: 0 } });
+    const next = downloadQueue[nextIndex];
+    if (next) {
+      console.log("⏳ Menunggu sebelum lanjut ke kota berikutnya...");
+      setTimeout(() => {
+        chrome.runtime.sendMessage({ action: "navigateAndReload", url: next.url });
+      }, 1000);
+    } else {
+      // Cek status akhir di storage sebelum memutuskan menutup tab
+      const finalHash = getUrlHash(url);
+      console.log("⏳ Menunggu download selesai sebelum menutup tab...");
+
+      // Tunggu lebih lama untuk memastikan file benar-benar terdownload (15 detik)
+      setTimeout(() => {
+        chrome.storage.local.get([`tabdownload_${finalHash}`], result => {
+          const finalData = result[`tabdownload_${finalHash}`];
+          if (finalData && finalData.status === 'success') {
+            console.log("🎉 Semua proses selesai (SUCCESS) - menutup tab otomatis dalam 3 detik...");
+            setTimeout(() => chrome.runtime.sendMessage({ action: 'closeTab' }), 3000);
+          } else {
+            console.log("🚫 Proses selesai namun status bukan success (", finalData ? finalData.status : 'unknown', ") - tab dibiarkan terbuka untuk inspeksi.");
+          }
+        });
+      }, 10000); // Tunggu 10 detik untuk memastikan download selesai
+    }
+  } catch (e) {
+    await markFail(getUrlHash(url), url, kota, downloadQueue, currentIndex, `Error akhir: ${e.message}`);
+    console.error('❌ Error mengatur queue berikutnya:', e);
   }
 })();

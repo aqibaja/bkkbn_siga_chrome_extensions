@@ -174,6 +174,30 @@ function setupSelectAll(buttonId, tabName) {
   });
 }
 
+// Hitung jumlah URL valid per textarea dan tampilkan
+function updateUrlCount(tabName) {
+  const textarea = document.getElementById(`urls-${tabName}`);
+  const counterEl = document.getElementById(`url-count-${tabName}`);
+  if (!textarea || !counterEl) return;
+
+  const raw = textarea.value;
+  const urls = raw
+    .split(/[\n\s]+/)
+    .map(u => u.trim())
+    .filter(u => u && (u.startsWith('http://') || u.startsWith('https://')));
+
+  counterEl.textContent = `${urls.length} URL valid`;
+  counterEl.style.color = urls.length === 0 ? '#a00' : '#555';
+}
+
+function bindUrlCountListeners(tabName) {
+  const textarea = document.getElementById(`urls-${tabName}`);
+  if (!textarea) return;
+  ['input', 'change', 'keyup', 'paste'].forEach(evt => {
+    textarea.addEventListener(evt, () => updateUrlCount(tabName));
+  });
+}
+
 // Fungsi untuk render Download Tab
 function renderDownloadTab() {
 
@@ -197,6 +221,22 @@ function renderDownloadTab() {
       // Progress bar dengan warna dinamis
       let progressColor = statClass === "success" ? "#18af34" : statClass === "fail" ? "#e12121" : "#484dde";
 
+      // Tombol aksi berdasarkan status
+      let actionButtons = '';
+      if (statClass === "fail") {
+        actionButtons = `
+          <button class="retry-btn" data-url="${item.url}" style="background:#ff9800; color:#fff; border:none; padding:6px 12px; border-radius:4px; cursor:pointer; font-size:12px;">
+            🔄 Retry Failed
+          </button>
+        `;
+      } else if (statClass === "downloading") {
+        actionButtons = `
+          <button class="cancel-btn" data-url="${item.url}" style="background:#e12121; color:#fff; border:none; padding:6px 12px; border-radius:4px; cursor:pointer; font-size:12px;">
+            ✖ Cancel & Close Tab
+          </button>
+        `;
+      }
+
       return `
         <div class="download-section">
           <div class="progress-url">URL ${i + 1}: ${item.url || "-"}</div>
@@ -209,10 +249,124 @@ function renderDownloadTab() {
           
           <div class="progress-status ${statClass}">Status: ${statText}</div>
           <div class="progress-file">${fileTerakhir}</div>
+          <div style="margin-top:10px;">${actionButtons}</div>
         </div>
       `;
     });
     document.getElementById("download-progress-list").innerHTML = blocks.length > 0 ? blocks.join("\n") : "<p>Tidak ada proses download.</p>";
+
+    // Attach event listeners untuk tombol Retry dan Cancel
+    document.querySelectorAll('.retry-btn').forEach(btn => {
+      btn.addEventListener('click', function () {
+        const url = this.getAttribute('data-url');
+        handleRetryFailedItems(url);
+      });
+    });
+
+    document.querySelectorAll('.cancel-btn').forEach(btn => {
+      btn.addEventListener('click', function () {
+        const url = this.getAttribute('data-url');
+        handleCancelAndCloseTab(url);
+      });
+    });
+  });
+}
+
+// Handler untuk retry item yang gagal
+function handleRetryFailedItems(url) {
+  if (!confirm(`Retry semua item yang gagal untuk URL:\n${url}?`)) return;
+
+  chrome.storage.local.get(null, function (data) {
+    // Cari semua auto_* keys untuk URL ini
+    const autoKeys = Object.keys(data).filter(k => k.startsWith('auto_'));
+
+    for (const key of autoKeys) {
+      const autoData = data[key];
+      if (autoData && autoData.downloadQueue) {
+        const firstItem = autoData.downloadQueue[0];
+        if (firstItem && firstItem.url === url) {
+          // Cari index item pertama yang gagal
+          const failedItems = autoData.downloadQueue
+            .map((item, idx) => ({ item, idx }))
+            .filter(({ item, idx }) => {
+              // Cek di storage apakah item ini gagal
+              const itemHash = safeUrlHash(item.url);
+              const progressKey = `tabdownload_${itemHash}`;
+              return data[progressKey] && data[progressKey].status === 'fail';
+            });
+
+          if (failedItems.length > 0) {
+            // Set currentIndex ke item gagal pertama dan reset retry
+            const firstFailedIdx = failedItems[0].idx;
+            chrome.storage.local.set({
+              [key]: {
+                ...autoData,
+                currentIndex: firstFailedIdx,
+                retryCount: 0
+              }
+            }, () => {
+              // Reset status fail items ke progress
+              failedItems.forEach(({ item }) => {
+                const itemHash = safeUrlHash(item.url);
+                const progressKey = `tabdownload_${itemHash}`;
+                if (data[progressKey]) {
+                  chrome.storage.local.set({
+                    [progressKey]: {
+                      ...data[progressKey],
+                      status: 'progress',
+                      fileAkhir: item.kota || 'Retry...'
+                    }
+                  });
+                }
+              });
+
+              // Kirim pesan ke background untuk reload tab
+              chrome.runtime.sendMessage({
+                action: 'retryFailedUrl',
+                url: url,
+                targetKey: key
+              });
+
+              alert(`♻️ Retry dimulai untuk ${failedItems.length} item yang gagal.`);
+              setTimeout(() => renderDownloadTab(), 500);
+            });
+            break;
+          } else {
+            alert('Tidak ada item yang gagal untuk URL ini.');
+          }
+          break;
+        }
+      }
+    }
+  });
+}
+
+// Handler untuk cancel dan close tab
+function handleCancelAndCloseTab(url) {
+  if (!confirm(`Cancel proses dan tutup tab untuk URL:\n${url}?`)) return;
+  const urlHash = safeUrlHash(url);
+  chrome.storage.local.get([`tabdownload_${urlHash}`], result => {
+    if (result[`tabdownload_${urlHash}`]) {
+      chrome.storage.local.set({
+        [`tabdownload_${urlHash}`]: {
+          ...result[`tabdownload_${urlHash}`],
+          status: 'fail',
+          fileAkhir: 'Cancelled by user'
+        }
+      }, () => {
+        // Minta background lakukan cancel & tutup tab
+        chrome.runtime.sendMessage({ action: 'cancelUrl', url }, resp => {
+          alert('✅ Proses dibatalkan. Menutup tab...');
+          setTimeout(() => renderDownloadTab(), 800);
+        });
+      });
+    } else {
+      // Tetap kirim cancel agar tab ditutup walau progress entry belum ada
+      chrome.runtime.sendMessage({ action: 'cancelUrl', url }, resp => {
+        alert('✅ Proses dibatalkan.');
+        setTimeout(() => renderDownloadTab(), 800);
+      });
+    }
   });
 }
 
@@ -291,6 +445,13 @@ tabButtons.forEach(button => {
 
 setupSelectAll('select-all-tahunan', 'tahunan');
 setupSelectAll('select-all-bulanan', 'bulanan');
+
+// Bind URL counter listeners
+bindUrlCountListeners('tahunan');
+bindUrlCountListeners('bulanan');
+// Initial count display
+updateUrlCount('tahunan');
+updateUrlCount('bulanan');
 
 // Reset functionality
 function setupReset(buttonId, tabName) {

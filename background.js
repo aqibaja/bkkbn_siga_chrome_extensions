@@ -100,15 +100,93 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === "navigateAndReload") {
         console.log("🔁 Navigating and forcing reload to:", message.url);
-        chrome.tabs.update(sender.tab.id, { url: message.url }, (tab) => {
-            // Tunggu sebentar lalu paksa reload
-            setTimeout(() => {
-                chrome.scripting.executeScript({
-                    target: { tabId: tab.id },
-                    func: () => location.reload()
-                });
-            }, 1000); // delay kecil agar URL sempat berubah
+        // Cek apakah tab sudah dibatalkan
+        const autoKey = `auto_${sender.tab.id}`;
+        chrome.storage.local.get([autoKey], res => {
+            const autoData = res[autoKey];
+            if (!autoData || autoData.cancelled) {
+                console.log('⛔ Navigasi dibatalkan (automation cancelled).');
+                return;
+            }
+            chrome.tabs.update(sender.tab.id, { url: message.url }, (tab) => {
+                setTimeout(() => {
+                    chrome.scripting.executeScript({
+                        target: { tabId: tab.id },
+                        func: () => location.reload()
+                    });
+                }, 1000);
+            });
         });
+    }
+
+    if (message.action === 'closeTab') {
+        if (sender && sender.tab && sender.tab.id) {
+            console.log('🗂 Menutup tab automation selesai:', sender.tab.id);
+            chrome.tabs.remove(sender.tab.id, () => {
+                if (chrome.runtime.lastError) {
+                    console.warn('Gagal menutup tab:', chrome.runtime.lastError.message);
+                }
+            });
+        } else {
+            console.warn('closeTab: sender.tab.id tidak tersedia');
+        }
+    }
+
+    // Handler untuk retry failed items
+    if (message.action === 'retryFailedUrl') {
+        const { url, targetKey } = message;
+        console.log('🔄 Retrying failed items for URL:', url);
+
+        // Ekstrak tab ID dari key
+        const tabId = parseInt(targetKey.replace('auto_', ''));
+
+        // Reload tab tersebut
+        chrome.tabs.reload(tabId, {}, () => {
+            if (chrome.runtime.lastError) {
+                console.warn('Tab tidak ditemukan, mungkin sudah tertutup');
+                // Jika tab sudah tertutup, buka tab baru
+                chrome.tabs.create({ url: url, active: false }, newTab => {
+                    // Pindahkan data automation ke tab baru
+                    chrome.storage.local.get([targetKey], result => {
+                        if (result[targetKey]) {
+                            chrome.storage.local.remove([targetKey], () => {
+                                chrome.storage.local.set({
+                                    [`auto_${newTab.id}`]: result[targetKey]
+                                });
+                            });
+                        }
+                    });
+                });
+            } else {
+                console.log('✅ Tab reloaded untuk retry');
+            }
+        });
+
+        sendResponse({ success: true });
+    }
+
+    // Handler pembatalan berdasarkan URL
+    if (message.action === 'cancelUrl') {
+        const { url } = message;
+        chrome.storage.local.get(null, data => {
+            const autoKeys = Object.keys(data).filter(k => k.startsWith('auto_'));
+            autoKeys.forEach(key => {
+                const autoData = data[key];
+                if (autoData && autoData.downloadQueue && autoData.downloadQueue[0] && autoData.downloadQueue[0].url === url) {
+                    // Tandai cancelled agar content script berhenti
+                    chrome.storage.local.set({ [key]: { ...autoData, cancelled: true } });
+                    const tabId = parseInt(key.replace('auto_', ''));
+                    console.log('🛑 Membatalkan automation untuk URL:', url, 'tab:', tabId);
+                    // Tutup tab
+                    chrome.tabs.remove(tabId, () => {
+                        if (chrome.runtime.lastError) {
+                            console.warn('Gagal menutup tab saat cancel:', chrome.runtime.lastError.message);
+                        }
+                    });
+                }
+            });
+        });
+        sendResponse({ success: true });
     }
 });
 
