@@ -545,6 +545,39 @@ function setupFormSubmit(formId, tabName) {
         // Inisialisasi progress awal per URL dengan 0% dan file pertama
         initializeDownloadProgress(queue);
 
+
+        // mapping id -> nama kab
+        const cityNameMap = {};
+        cities.forEach(city => { cityNameMap[city.id] = city.name; });
+
+        // ambil kab terpilih (kalau 1 saja)
+        const checked = document.querySelectorAll(`#cities-${tabName} input[type="checkbox"]:checked`);
+        const selectedCityIds = Array.from(checked).map(cb => cb.value);
+
+        let kab = '';
+        if (selectedCityIds.length === 1) {
+          kab = cityNameMap[selectedCityIds[0]]; // contoh: "01 - ACEH SELATAN"
+        } else if (selectedCityIds.length > 1) {
+          kab = 'MULTI_KAB'; // atau gabungkan nanti
+        } else {
+          kab = 'PROVINSI';
+        }
+
+        // rapikan: buang "01 - "
+        kab = kab.replace(/^\d+\s*-\s*/, '').trim();
+
+        const payload = {
+          periode: document.getElementById(`periode-${tabName}`).value,
+          kab: kab,
+          kec: document.getElementById(`kecamatan-${tabName}`).value
+        };
+
+        if (tabName === "bulanan") {
+          payload.tahun = document.getElementById("tahun")?.value; // ambil input tahun bulanan
+        }
+
+        chrome.runtime.sendMessage({ action: "setRenameContext", payload });
+
         // Kirim pesan ke background untuk mulai proses
         chrome.runtime.sendMessage({ action: 'processData', data },
           (response) => {
