@@ -477,7 +477,7 @@ function renderDownloadTab() {
     const entries = Object.keys(data)
       .filter(k => k.startsWith('tabdownload_'))
       .map(k => data[k])
-      .sort((a, b) => a.urlIndex - b.urlIndex);
+      .sort((a, b) => (a.urlIndex || 0) - (b.urlIndex || 0));
 
     let blocks = entries.map((item, i) => {
       let statClass = "downloading", statText = "Progress";
@@ -559,10 +559,10 @@ function handleRetryFailedItems(url) {
           const failedItems = autoData.downloadQueue
             .map((item, idx) => ({ item, idx }))
             .filter(({ item, idx }) => {
-              // Cek di storage apakah item ini gagal
+              // Cek di storage apakah item ini gagal (cari semua tabdownload_ yang cocok)
               const itemHash = safeUrlHash(item.url);
-              const progressKey = `tabdownload_${itemHash}`;
-              return data[progressKey] && data[progressKey].status === 'fail';
+              const progressKeys = Object.keys(data).filter(k => k.startsWith(`tabdownload_${itemHash}`));
+              return progressKeys.some(pk => data[pk] && data[pk].status === 'fail');
             });
 
           if (failedItems.length > 0) {
@@ -575,19 +575,21 @@ function handleRetryFailedItems(url) {
                 retryCount: 0
               }
             }, () => {
-              // Reset status fail items ke progress
+              // Reset status fail items ke progress (untuk semua matching keys)
               failedItems.forEach(({ item }) => {
                 const itemHash = safeUrlHash(item.url);
-                const progressKey = `tabdownload_${itemHash}`;
-                if (data[progressKey]) {
-                  chrome.storage.local.set({
-                    [progressKey]: {
-                      ...data[progressKey],
-                      status: 'progress',
-                      fileAkhir: item.kota || 'Retry...'
-                    }
-                  });
-                }
+                const progressKeys = Object.keys(data).filter(k => k.startsWith(`tabdownload_${itemHash}`));
+                progressKeys.forEach(pk => {
+                  if (data[pk]) {
+                    chrome.storage.local.set({
+                      [pk]: {
+                        ...data[pk],
+                        status: 'progress',
+                        fileAkhir: item.kota || 'Retry...'
+                      }
+                    });
+                  }
+                });
               });
 
               // Kirim pesan ke background untuk reload tab
@@ -615,20 +617,18 @@ function handleRetryFailedItems(url) {
 function handleCancelAndCloseTab(url) {
   if (!confirm(`Cancel proses dan tutup tab untuk URL:\n${url}?`)) return;
   const urlHash = safeUrlHash(url);
-  chrome.storage.local.get([`tabdownload_${urlHash}`], result => {
-    if (result[`tabdownload_${urlHash}`]) {
-      chrome.storage.local.set({
-        [`tabdownload_${urlHash}`]: {
-          ...result[`tabdownload_${urlHash}`],
-          status: 'fail',
-          fileAkhir: 'Cancelled by user'
-        }
-      }, () => {
-        // Minta background lakukan cancel & tutup tab
-        chrome.runtime.sendMessage({ action: 'cancelUrl', url }, resp => {
-          alert('✅ Proses dibatalkan. Menutup tab...');
-          setTimeout(() => renderDownloadTab(), 800);
-        });
+  // Update all matching tabdownload_* keys to fail, then request background to cancel tabs
+  chrome.storage.local.get(null, result => {
+    const matching = Object.keys(result).filter(k => k.startsWith(`tabdownload_${urlHash}`));
+    if (matching.length > 0) {
+      matching.forEach(k => {
+        const val = result[k];
+        chrome.storage.local.set({ [k]: { ...val, status: 'fail', fileAkhir: 'Cancelled by user' } });
+      });
+      // Minta background lakukan cancel & tutup tab
+      chrome.runtime.sendMessage({ action: 'cancelUrl', url }, resp => {
+        alert('✅ Proses dibatalkan. Menutup tab...');
+        setTimeout(() => renderDownloadTab(), 800);
       });
     } else {
       // Tetap kirim cancel agar tab ditutup walau progress entry belum ada
@@ -671,30 +671,28 @@ function switchToDownloadTab() {
 }
 
 function initializeDownloadProgress(downloadQueue) {
-  // Group queue berdasarkan URL untuk mendapatkan unique URLs
-  const urlToQueueMap = {};
-  downloadQueue.forEach(item => {
-    if (!urlToQueueMap[item.url]) urlToQueueMap[item.url] = [];
-    urlToQueueMap[item.url].push(item);
+  // Buat entry progress per item di queue (agar banyak tab/entry per URL didukung)
+  const toSet = {};
+  const keys = [];
+  let idxCounter = 0;
+  downloadQueue.forEach((item, i) => {
+    const urlHash = safeUrlHash(item.url);
+    const key = `tabdownload_${urlHash}_${i}_${Date.now()}`;
+    keys.push(key);
+    const firstFile = item.kota || item.desa || "Memulai...";
+    toSet[key] = {
+      url: item.url,
+      status: "progress",
+      totalFiles: 1,
+      filesCompleted: 0,
+      fileAkhir: firstFile,
+      urlIndex: idxCounter++
+    };
   });
-
-  // Untuk setiap URL, buat initial progress state
-  Object.keys(urlToQueueMap).forEach(url => {
-    const queue = urlToQueueMap[url];
-    const urlHash = safeUrlHash(url); // Hash untuk key unik
-    const firstFile = queue[0].kota || "Memulai...";
-
-    chrome.storage.local.set({
-      [`tabdownload_${urlHash}`]: {
-        url: url,
-        status: "progress", // Status awal
-        totalFiles: queue.length,
-        filesCompleted: 0,
-        fileAkhir: firstFile
-      }
-    }, () => {
-      // Refresh UI setelah inisialisasi
+  return new Promise(resolve => {
+    chrome.storage.local.set(toSet, () => {
       renderDownloadTab();
+      resolve(keys);
     });
   });
 }
@@ -835,44 +833,49 @@ function setupFormSubmit(formId, tabName) {
         resetDownloadProgress(() => {
           switchToDownloadTab();
           // initialize progress entries for the per-item queue so renderDownloadTab can show them
-          initializeDownloadProgress(queue);
-          queue.forEach(item => {
-            // Data untuk 1 tab
-            const singleQueue = [item];
-            const dataSingle = {
-              tab: tabName,
-              periode,
-              kecamatan,
-              jenisLaporan,
-              selectedCities,
-              downloadQueue: singleQueue,
-              urls
-            };
-            let payload = {
-              periode,
-              kab: (item.kota || '').toString().replace(/^\d+\s*-\s*/, '').trim(),
-              kec: kecamatan
-            };
-            if (tabName === 'bulanan') {
-              dataSingle.faskes = item.faskes || '';
-              dataSingle.tahun = document.getElementById('tahun').value;
-              payload.tahun = dataSingle.tahun;
-              payload.faskes = item.faskes || '';
-            } else {
-              dataSingle.desa = item.desa || '';
-              dataSingle.rw = document.getElementById('rw-tahunan').value;
-              dataSingle.sasaran = document.getElementById('sasaran-tahunan').value;
-              payload.desa = item.desa || '';
-              payload.rw = dataSingle.rw;
-            }
-            chrome.runtime.sendMessage({ action: "setRenameContext", payload });
-            chrome.runtime.sendMessage({ action: 'processData', data: dataSingle }, (response) => {
-              if (response && response.success) {
-                console.log('Proses download dimulai...');
+          initializeDownloadProgress(queue).then(keys => {
+            queue.forEach((item, idx) => {
+              // Data untuk 1 tab
+              const singleQueue = [item];
+              const dataSingle = {
+                tab: tabName,
+                periode,
+                kecamatan,
+                jenisLaporan,
+                selectedCities,
+                downloadQueue: singleQueue,
+                urls
+              };
+              let payload = {
+                periode,
+                kab: (item.kota || '').toString().replace(/^\d+\s*-\s*/, '').trim(),
+                kec: kecamatan
+              };
+              if (tabName === 'bulanan') {
+                dataSingle.faskes = item.faskes || '';
+                dataSingle.tahun = document.getElementById('tahun').value;
+                payload.tahun = dataSingle.tahun;
+                payload.faskes = item.faskes || '';
               } else {
-                alert('Proses gagal atau tidak ada response.');
+                dataSingle.desa = item.desa || '';
+                dataSingle.rw = document.getElementById('rw-tahunan').value;
+                dataSingle.sasaran = document.getElementById('sasaran-tahunan').value;
+                payload.desa = item.desa || '';
+                payload.rw = dataSingle.rw;
               }
+              // attach the generated progress key so the content script can update the correct entry
+              dataSingle.progressKey = keys[idx];
+              chrome.runtime.sendMessage({ action: "setRenameContext", payload });
+              chrome.runtime.sendMessage({ action: 'processData', data: dataSingle }, (response) => {
+                if (response && response.success) {
+                  console.log('Proses download dimulai...');
+                } else {
+                  alert('Proses gagal atau tidak ada response.');
+                }
+              });
             });
+          }).catch(err => {
+            console.error('Gagal inisialisasi progress keys:', err);
           });
         });
         return;

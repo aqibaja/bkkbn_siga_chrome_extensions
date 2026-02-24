@@ -50,12 +50,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         Object.keys(urlToQueueMap).forEach((url) => {
             chrome.tabs.create({ url, active: false }, (tabObj) => {
+                // If caller provided a progressKey for each item, preserve it into auto_<tabId>
+                const dataForThisUrl = message.data;
+                const progressKey = dataForThisUrl && dataForThisUrl.progressKey ? dataForThisUrl.progressKey : null;
                 chrome.storage.local.set({
                     [`auto_${tabObj.id}`]: {
                         downloadQueue: urlToQueueMap[url],
                         currentIndex: 0,
                         periode, selectedCities, kecamatan, jenisLaporan, faskes, tahun, desa, rw, sasaran,
-                        cancelled: false
+                        cancelled: false,
+                        progressKey
                     },
                 });
             });
@@ -184,6 +188,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
 });
 
+// Allow popup/content to register a rename payload specific to a blob URL
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.action === 'registerBlobRename') {
+        const { blobUrl, payload } = message;
+        if (!blobUrl || !payload) { sendResponse({ ok: false }); return; }
+        const key = `rename_for_${blobUrl}`;
+        chrome.storage.local.set({ [key]: payload }, () => {
+            sendResponse({ ok: true });
+        });
+        return true;
+    }
+    return false;
+});
+
 // Cleanup auto data kalau tab automation ditutup
 chrome.tabs.onRemoved.addListener((tabId) => {
     chrome.storage.local.remove([`auto_${tabId}`]);
@@ -205,16 +223,23 @@ chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
         return;
     }
 
-    chrome.storage.local.get(["renameContext", "renameEnabled"], (res) => {
-        if (!res.renameEnabled) {
+    // Prefer a per-blob rename payload if registered, else fallback to global renameContext
+    const blobKey = `rename_for_${downloadItem.url}`;
+    chrome.storage.local.get([blobKey, "renameContext", "renameEnabled"], (res) => {
+        if (!res.renameEnabled && !res[blobKey]) {
             suggest({ filename: downloadItem.filename, conflictAction: "uniquify" });
             return;
         }
 
-        const ctx = res.renameContext;
+        const ctx = res[blobKey] || res.renameContext;
         if (!ctx) {
             suggest({ filename: downloadItem.filename, conflictAction: "uniquify" });
             return;
+        }
+
+        // If we used a blob-specific mapping, remove it so it doesn't affect later downloads
+        if (res[blobKey]) {
+            chrome.storage.local.remove([blobKey]);
         }
 
         // Ambil nama asli server: "Tabel1.xlsx" -> "Tabel1"
@@ -223,8 +248,13 @@ chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
         const originalExt = original.includes(".") ? original.split(".").pop() : "xlsx";
         const tahunPart = ctx.tahun ? `-${sanitize(ctx.tahun)}` : "";
 
+        // Ensure suggested filename is unique per download by appending the download id
+        const uniqueSuffix = downloadItem && downloadItem.id ? `-${downloadItem.id}` : `-${Date.now()}`;
+        // Include desa (tahunan) or faskes (bulanan) if available
+        const place = ctx.desa ? sanitize(ctx.desa) : (ctx.faskes ? sanitize(ctx.faskes) : null);
+        const placePart = place ? `-${place}` : "";
         const newName =
-            `${sanitize(ctx.periode)}${tahunPart}-${sanitize(ctx.kab)}-${sanitize(ctx.kec)}-${sanitize(originalBase)}.${sanitize(originalExt)}`;
+            `${sanitize(ctx.periode)}${tahunPart}-${sanitize(ctx.kab)}-${sanitize(ctx.kec)}${placePart}-${sanitize(originalBase)}${uniqueSuffix}.${sanitize(originalExt)}`;
 
         suggest({ filename: newName, conflictAction: "uniquify" });
     });
