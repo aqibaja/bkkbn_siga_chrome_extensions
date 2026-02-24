@@ -486,7 +486,10 @@ function renderDownloadTab() {
       if (item.status === "progress") { statClass = "downloading"; statText = "Progress"; }
 
       let progress = item.totalFiles > 0 ? Math.round((item.filesCompleted / item.totalFiles) * 100) : 0;
-      let fileTerakhir = item.fileAkhir ? `file terakhir : ${item.fileAkhir}` : '';
+      let fileTerakhir = item.fileAkhir ? `File terakhir : ${item.fileAkhir}` : '';
+      let placeLabel = '';
+      if (item.desa) placeLabel = `Desa: ${item.desa}`;
+      else if (item.faskes) placeLabel = `Desa/Faskes: ${item.faskes}`;
 
       // Progress bar dengan warna dinamis
       let progressColor = statClass === "success" ? "#18af34" : statClass === "fail" ? "#e12121" : "#484dde";
@@ -519,6 +522,7 @@ function renderDownloadTab() {
           
           <div class="progress-status ${statClass}">Status: ${statText}</div>
           <div class="progress-file">${fileTerakhir}</div>
+          <div class="progress-place">${placeLabel}</div>
           <div style="margin-top:10px;">${actionButtons}</div>
         </div>
       `;
@@ -686,7 +690,11 @@ function initializeDownloadProgress(downloadQueue) {
       totalFiles: 1,
       filesCompleted: 0,
       fileAkhir: firstFile,
-      urlIndex: idxCounter++
+      urlIndex: idxCounter++,
+      // keep kota/desa/faskes for display in progress UI
+      kota: item.kota || '',
+      desa: item.desa || '',
+      faskes: item.faskes || ''
     };
   });
   return new Promise(resolve => {
@@ -911,6 +919,58 @@ function setupFormSubmit(formId, tabName) {
       }
 
       console.log('Data to be sent:', data);
+      // If user requested "download semua", show a confirmation preview listing
+      const checked = document.querySelectorAll(`#cities-${tabName} input[type="checkbox"]:checked`);
+      const selectedCitiesPreview = Array.from(checked).map(cb => cb.value);
+      if (tabName === 'tahunan') {
+        const allDesaChecked = document.getElementById('all-desa-tahunan')?.checked;
+        if (allDesaChecked) {
+          if (selectedCitiesPreview.length !== 1) {
+            alert('Fitur "Download semua desa" hanya tersedia saat satu kabupaten dipilih.');
+            return;
+          }
+          // collect desa list from rendered container
+          let desaList = Array.from(document.querySelectorAll('#list-desa-tahunan div')).map(d => d.textContent.trim());
+          if (desaList.length === 0 && Array.isArray(wilayahData)) {
+            // fallback: build from wilayahData
+            const kabNum = Number(selectedCitiesPreview[0]);
+            const kecName = (document.getElementById(`kecamatan-${tabName}`).value || '').split('-')[1] || '';
+            desaList = wilayahData.filter(entry => {
+              const kodeKabObj = entry['KODE KABUPATEN'];
+              const kodeKab = kodeKabObj && typeof kodeKabObj === 'object' ? Object.values(kodeKabObj)[0] : kodeKabObj;
+              const namaKec = (entry['NAMA KECAMATAN'] || '').toString().trim();
+              return Number(kodeKab) === kabNum && namaKec.toLowerCase() === kecName.toLowerCase();
+            }).map(e => `${e['KODE DESA']} - ${e['NAMA DESA']}`);
+          }
+          if (desaList.length === 0) { alert('Daftar desa kosong - tidak dapat melanjutkan.'); return; }
+          const preview = desaList.slice(0, 10).join('\n');
+          const ok = confirm(`Anda akan mendownload ${desaList.length} desa. Contoh:\n\n${preview}${desaList.length > 10 ? '\n...' : ''}\n\nLanjutkan?`);
+          if (!ok) return;
+        }
+      } else {
+        const allFaskesChecked = document.getElementById('all-faskes-bulanan')?.checked;
+        if (allFaskesChecked) {
+          if (selectedCitiesPreview.length !== 1) {
+            alert('Fitur "Download semua faskes/desa" hanya tersedia saat satu kabupaten dipilih.');
+            return;
+          }
+          let faskesList = Array.from(document.querySelectorAll('#list-faskes-bulanan div')).map(d => d.textContent.trim());
+          if (faskesList.length === 0 && Array.isArray(wilayahData)) {
+            const kabNum = Number(selectedCitiesPreview[0]);
+            const kecName = (document.getElementById(`kecamatan-${tabName}`).value || '').split('-')[1] || '';
+            faskesList = wilayahData.filter(entry => {
+              const kodeKabObj = entry['KODE KABUPATEN'];
+              const kodeKab = kodeKabObj && typeof kodeKabObj === 'object' ? Object.values(kodeKabObj)[0] : kodeKabObj;
+              const namaKec = (entry['NAMA KECAMATAN'] || '').toString().trim();
+              return Number(kodeKab) === kabNum && namaKec.toLowerCase() === kecName.toLowerCase();
+            }).map(e => `${e['KODE DESA']} - ${e['NAMA DESA']}`);
+          }
+          if (faskesList.length === 0) { alert('Daftar faskes/desa kosong - tidak dapat melanjutkan.'); return; }
+          const preview = faskesList.slice(0, 10).join('\n');
+          const ok = confirm(`Anda akan mendownload ${faskesList.length} faskes/desa. Contoh:\n\n${preview}${faskesList.length > 10 ? '\n...' : ''}\n\nLanjutkan?`);
+          if (!ok) return;
+        }
+      }
       // Reset progress lama dan pindah ke tab Download
       resetDownloadProgress(() => {
         switchToDownloadTab();

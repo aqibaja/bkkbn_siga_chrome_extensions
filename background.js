@@ -244,17 +244,40 @@ chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
 
         // Ambil nama asli server: "Tabel1.xlsx" -> "Tabel1"
         const original = downloadItem.filename || "";
-        const originalBase = original.split(/[\\/]/).pop().replace(/\.[^.]+$/, "");
+        const originalBase = original.split(/[\\\/]/).pop().replace(/\.[^.]+$/, "");
         const originalExt = original.includes(".") ? original.split(".").pop() : "xlsx";
         const tahunPart = ctx.tahun ? `-${sanitize(ctx.tahun)}` : "";
 
         // Ensure suggested filename is unique per download by appending the download id
         const uniqueSuffix = downloadItem && downloadItem.id ? `-${downloadItem.id}` : `-${Date.now()}`;
-        // Include desa (tahunan) or faskes (bulanan) if available
-        const place = ctx.desa ? sanitize(ctx.desa) : (ctx.faskes ? sanitize(ctx.faskes) : null);
-        const placePart = place ? `-${place}` : "";
-        const newName =
-            `${sanitize(ctx.periode)}${tahunPart}-${sanitize(ctx.kab)}-${sanitize(ctx.kec)}${placePart}-${sanitize(originalBase)}${uniqueSuffix}.${sanitize(originalExt)}`;
+
+        // Build filename from non-empty parts to avoid leading/trailing dashes
+        const stripCode = (s) => (s || "").toString().replace(/^\s*\d+\s*[-_.]*\s*/, '').trim();
+        const kecClean = ctx.kec ? sanitize(stripCode(ctx.kec)) : '';
+        const placeRaw = ctx.desa ? ctx.desa : (ctx.faskes ? ctx.faskes : '');
+
+        // If placeRaw includes a leading numeric code like "2017 - GAMPONG BARO", extract both
+        let placePartClean = '';
+        if (placeRaw) {
+            const m = placeRaw.toString().trim().match(/^(\d+)\s*[-_.]*\s*(.+)$/);
+            if (m) {
+                const code = sanitize(m[1]);
+                const name = sanitize(m[2]);
+                placePartClean = `${code}_${name}`;
+            } else {
+                placePartClean = sanitize(placeRaw);
+            }
+        }
+
+        const parts = [];
+        if (ctx.periode) parts.push(sanitize(ctx.periode));
+        if (ctx.tahun) parts.push(sanitize(ctx.tahun));
+        if (ctx.kab) parts.push(sanitize(ctx.kab));
+        if (kecClean) parts.push(kecClean);
+        if (placePartClean) parts.push(placePartClean);
+
+        const prefix = parts.join('-');
+        const newName = `${prefix ? prefix + '-' : ''}${sanitize(originalBase)}${uniqueSuffix}.${sanitize(originalExt)}`;
 
         suggest({ filename: newName, conflictAction: "uniquify" });
     });

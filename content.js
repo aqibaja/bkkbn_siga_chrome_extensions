@@ -496,7 +496,7 @@
     await wait(400);
 
     // Try to detect blob URL created by the page and register rename payload per-blob
-    (async function tryRegisterBlob() {
+    (function tryRegisterBlob() {
       const payload = {
         periode: storage.periode,
         tahun: storage.tahun,
@@ -507,27 +507,42 @@
         rw: storage.rw || ''
       };
 
-      const timeout = 3000;
-      const interval = 200;
-      const start = Date.now();
-      while (Date.now() - start < timeout) {
-        // look for anchors or iframe/source with blob: href/src
-        const blobs = [...document.querySelectorAll('a[href^="blob:"], iframe[src^="blob:"], source[src^="blob:"]')]
-          .map(el => el.href || el.src)
-          .filter(Boolean);
+      // Broaden detection: watch for anchors/iframes/sources with blob: in href/src, and wait longer
+      const selectors = ['a[href^="blob:"]', 'a[download][href^="blob:"]', 'iframe[src^="blob:"]', 'source[src^="blob:"]', 'a[href*="blob:"]'];
+      const timeoutMs = 10000;
+
+      // Try immediate scan first
+      const scanAndRegister = () => {
+        const nodes = document.querySelectorAll(selectors.join(','));
+        const blobs = [...nodes].map(el => el.href || el.src).filter(Boolean);
         if (blobs.length > 0) {
           const blobUrl = blobs[blobs.length - 1];
           try {
             chrome.runtime.sendMessage({ action: 'registerBlobRename', blobUrl, payload }, (resp) => {
-              console.log('registerBlobRename resp', resp);
+              console.log('registerBlobRename resp', resp, 'for', blobUrl, payload.desa);
             });
           } catch (e) {
             console.warn('Failed to register blob rename', e);
           }
-          break;
+          return true;
         }
-        await wait(interval);
-      }
+        return false;
+      };
+
+      if (scanAndRegister()) return;
+
+      // Otherwise observe DOM mutations for dynamically injected blob links
+      const observer = new MutationObserver((mutations) => {
+        if (scanAndRegister()) {
+          observer.disconnect();
+        }
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+
+      // Stop observing after timeout
+      setTimeout(() => {
+        try { observer.disconnect(); } catch (e) { }
+      }, timeoutMs);
     })();
 
     await wait(500);
