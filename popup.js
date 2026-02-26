@@ -1041,3 +1041,203 @@ setupFormSubmit('bulanan-form', 'bulanan');
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === "refresh_download_status") renderDownloadTab();
 });
+
+// ──────────────────────────────────────────────────────────
+// MENU NAVIGATION
+// ──────────────────────────────────────────────────────────
+
+const menuConfig = {
+  'laporan': {
+    label: 'LAPORAN',
+    submenus: [
+      { id: 'yan-kb', label: 'YAN KB' },
+      { id: 'dallap', label: 'DALLAP' },
+      { id: 'kbs', label: 'KELUARGA BERESIKO STUNTING' },
+      { id: 'elsimil', label: 'ELSIMIL' },
+    ]
+  },
+  'rekapitulasi': {
+    label: 'REKAPITULASI',
+    submenus: [
+      { id: 'rekap-keluarga', label: 'Rekapitulasi Data Keluarga' }
+    ]
+  },
+  'verval-krs': {
+    label: 'VERVAL KRS',
+    submenus: [
+      { id: 'krs-keluarga', label: 'Keluarga Risiko Stunting' },
+      { id: 'monitoring-krs', label: 'Monitoring Verval KRS' }
+    ]
+  },
+  'pendaftaran-elsimil': {
+    label: 'Pendaftaran ELSIMIL',
+    submenus: [
+      { id: 'catin', label: 'Catin' },
+      { id: 'ibu-hamil', label: 'Ibu Hamil' },
+      { id: 'pascapersalinan', label: 'Pascapersalinan' },
+      { id: 'baduta', label: 'Baduta' }
+    ]
+  }
+};
+
+// Field visibility per sub-menu id
+// 'hide' = array of input/select IDs whose parent .form-group gets hidden
+const fieldVisibilityConfig = {
+  'yan-kb': {
+    tahunan: { hide: ['rw-tahunan', 'sasaran-tahunan', 'jenis-laporan-tahunan'] },
+    bulanan: { hide: ['jenis-laporan-bulanan'] }
+  },
+  'dallap': {
+    tahunan: { hide: ['rw-tahunan', 'sasaran-tahunan', 'jenis-laporan-tahunan'] },
+    bulanan: { hide: ['jenis-laporan-bulanan'] }
+  },
+  'kbs': {
+    hideTabs: ['bulanan'],
+    tahunan: { hide: ['jenis-laporan-tahunan'] }
+  },
+  'elsimil': {
+    tahunan: { hide: ['rw-tahunan', 'sasaran-tahunan'] }
+  }
+  // additional sub-menu configs will be added here as each report type is built out
+};
+
+// All hideable field IDs across both tabs (used for reset)
+const hideableTahunan = ['rw-tahunan', 'sasaran-tahunan', 'jenis-laporan-tahunan'];
+const hideableBulanan = ['jenis-laporan-bulanan'];
+
+function applyFieldVisibility(reportId) {
+  // First restore all fields
+  [...hideableTahunan, ...hideableBulanan].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      const fg = el.closest('.form-group');
+      if (fg) fg.style.display = '';
+    }
+  });
+
+  // Restore all tabs
+  ['tahunan', 'bulanan'].forEach(tab => {
+    const btn = document.querySelector(`.tab-button[data-tab="${tab}"]`);
+    if (btn) btn.style.display = '';
+  });
+
+  const config = fieldVisibilityConfig[reportId];
+
+  // Hide tabs if specified
+  if (config && config.hideTabs) {
+    config.hideTabs.forEach(tab => {
+      const btn = document.querySelector(`.tab-button[data-tab="${tab}"]`);
+      if (btn) {
+        btn.style.display = 'none';
+        // If this hidden tab is currently active, switch to tahunan
+        if (btn.classList.contains('active')) {
+          btn.classList.remove('active');
+          document.getElementById(`${tab}-content`).classList.remove('active');
+          const tahunanBtn = document.querySelector('.tab-button[data-tab="tahunan"]');
+          if (tahunanBtn) tahunanBtn.classList.add('active');
+          const tahunanContent = document.getElementById('tahunan-content');
+          if (tahunanContent) tahunanContent.classList.add('active');
+        }
+      }
+    });
+  }
+
+  // Recalculate grid columns based on visible tab buttons
+  const tabsBar = document.getElementById('tabs-bar');
+  if (tabsBar) {
+    const visibleCount = tabsBar.querySelectorAll('.tab-button:not([style*="display: none"]):not([style*="display:none"])').length;
+    tabsBar.style.gridTemplateColumns = `repeat(${visibleCount}, 1fr)`;
+  }
+
+  if (!config) return;
+
+  if (config.tahunan && config.tahunan.hide) {
+    config.tahunan.hide.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) {
+        const fg = el.closest('.form-group');
+        if (fg) fg.style.display = 'none';
+      }
+    });
+  }
+  if (config.bulanan && config.bulanan.hide) {
+    config.bulanan.hide.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) {
+        const fg = el.closest('.form-group');
+        if (fg) fg.style.display = 'none';
+      }
+    });
+  }
+}
+
+// Screen references
+const menuScreen = document.getElementById('menu-screen');
+const submenuScreen = document.getElementById('submenu-screen');
+const formScreen = document.getElementById('form-screen');
+
+let activeMenuId = null;
+let activeSubmenuId = null;
+
+function showScreen(screen) {
+  [menuScreen, submenuScreen, formScreen].forEach(s => {
+    if (s) s.style.display = 'none';
+  });
+  if (screen) screen.style.display = 'block';
+}
+
+// Category buttons
+document.querySelectorAll('.menu-item[data-menu]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const menuId = btn.getAttribute('data-menu');
+    const menu = menuConfig[menuId];
+    if (!menu) return;
+
+    activeMenuId = menuId;
+
+    // Populate sub-menu
+    const submenuTitle = document.getElementById('submenu-title');
+    const submenuList = document.getElementById('submenu-list');
+    submenuTitle.textContent = menu.label;
+    submenuList.innerHTML = '';
+
+    menu.submenus.forEach(sub => {
+      const subBtn = document.createElement('button');
+      subBtn.className = 'menu-item';
+      subBtn.innerHTML = `
+        <span class="menu-item-label">${sub.label}</span>
+        <span class="menu-item-chevron">›</span>
+      `;
+      subBtn.addEventListener('click', () => {
+        activeSubmenuId = sub.id;
+
+        // Update breadcrumb
+        const breadcrumb = document.getElementById('breadcrumb-label');
+        if (breadcrumb) breadcrumb.textContent = `${menu.label}  ›  ${sub.label}`;
+
+        // Apply field visibility rules for this report type
+        applyFieldVisibility(sub.id);
+
+        showScreen(formScreen);
+      });
+      submenuList.appendChild(subBtn);
+    });
+
+    showScreen(submenuScreen);
+  });
+});
+
+// Back: submenu → menu
+document.getElementById('back-to-menu').addEventListener('click', () => {
+  activeMenuId = null;
+  showScreen(menuScreen);
+});
+
+// Back: form → submenu
+document.getElementById('back-to-submenu').addEventListener('click', () => {
+  activeSubmenuId = null;
+  showScreen(submenuScreen);
+});
+
+// On load: show menu screen
+showScreen(menuScreen);

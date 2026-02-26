@@ -20,8 +20,8 @@ body {
 /* Tabs */
 .tabs {
     display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    /* 3 kolom untuk 3 tab */
+    grid-template-columns: repeat(3, 1fr);
+    /* updated dynamically via JS when tabs are hidden */
     gap: 0;
     background-color: #f3f3f5;
     border-radius: 10px;
@@ -269,4 +269,84 @@ h3 {
 .divider {
     border-top: 3px solid #f5f5f5;
     margin: 18px 0;
+}
+
+/* ── Menu / Submenu Screens ──────────────────────────── */
+.menu-screen-hint {
+    font-size: 13px;
+    color: #717182;
+    margin-bottom: 12px;
+}
+
+.menu-screen-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #030213;
+    margin-bottom: 12px;
+}
+
+.menu-breadcrumb {
+    font-size: 12px;
+    color: #717182;
+    margin-bottom: 12px;
+}
+
+.menu-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.menu-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 14px 16px;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 10px;
+    background-color: #f9f9fb;
+    color: #030213;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: left;
+}
+
+.menu-item:hover {
+    background-color: #ebebf0;
+    border-color: rgba(0, 0, 0, 0.15);
+}
+
+.menu-item:active {
+    transform: scale(0.98);
+}
+
+.menu-item-label {
+    flex: 1;
+}
+
+.menu-item-chevron {
+    font-size: 18px;
+    color: #aaaabc;
+    line-height: 1;
+}
+
+.btn-back {
+    display: inline-flex;
+    align-items: center;
+    background: none;
+    border: none;
+    color: #484dde;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    padding: 0;
+    margin-bottom: 14px;
+    transition: opacity 0.15s;
+}
+
+.btn-back:hover {
+    opacity: 0.75;
 }
