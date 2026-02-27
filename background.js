@@ -248,9 +248,6 @@ chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
         const originalExt = original.includes(".") ? original.split(".").pop() : "xlsx";
         const tahunPart = ctx.tahun ? `-${sanitize(ctx.tahun)}` : "";
 
-        // Ensure suggested filename is unique per download by appending the download id
-        const uniqueSuffix = downloadItem && downloadItem.id ? `-${downloadItem.id}` : `-${Date.now()}`;
-
         // Build filename from non-empty parts to avoid leading/trailing dashes
         const stripCode = (s) => (s || "").toString().replace(/^\s*\d+\s*[-_.]*\s*/, '').trim();
         const kecClean = ctx.kec ? sanitize(stripCode(ctx.kec)) : '';
@@ -277,7 +274,7 @@ chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
         if (placePartClean) parts.push(placePartClean);
 
         const prefix = parts.join('-');
-        const newName = `${prefix ? prefix + '-' : ''}${sanitize(originalBase)}${uniqueSuffix}.${sanitize(originalExt)}`;
+        const newName = `${prefix ? prefix + '-' : ''}${sanitize(originalBase)}.${sanitize(originalExt)}`;
 
         suggest({ filename: newName, conflictAction: "uniquify" });
     });

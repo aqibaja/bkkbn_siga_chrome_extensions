@@ -106,6 +106,13 @@ function renderCheckboxes(containerId, tabName) {
     checkbox.addEventListener('change', () => {
       updateKecamatanDropdown(tabName);
       handleDisableInputs(tabName);
+      // Re-apply semua kecamatan state if still checked
+      const allKecEl = document.getElementById(`all-kecamatan-${tabName}`);
+      if (allKecEl && allKecEl.checked) {
+        setKecamatanInputVisibility(tabName, false);
+        setDesaFaskesDisabled(tabName, true);
+        renderKecamatanList(tabName);
+      }
     });
   });
 
@@ -117,8 +124,8 @@ function renderCheckboxes(containerId, tabName) {
     const disable = checked.length > 1;
     // Daftar id input yang harus di-disable
     const idsToDisable = tabName === 'tahunan'
-      ? ['kecamatan-tahunan', 'desa-tahunan', 'all-desa-tahunan', 'rw-tahunan', 'sasaran-tahunan']
-      : ['kecamatan-bulanan', 'faskes-bulanan', 'all-faskes-bulanan', 'tahun'];
+      ? ['kecamatan-tahunan', 'desa-tahunan', 'all-desa-tahunan', 'all-kecamatan-tahunan', 'rw-tahunan', 'sasaran-tahunan']
+      : ['kecamatan-bulanan', 'faskes-bulanan', 'all-faskes-bulanan', 'all-kecamatan-bulanan', 'tahun'];
     idsToDisable.forEach(id => {
       const el = document.getElementById(id);
       if (el) el.disabled = disable;
@@ -195,15 +202,22 @@ function updateKecamatanDropdown(tabName) {
       });
 
       kecamatanContainer.appendChild(select);
+
+      // Jika "semua kecamatan" sudah dicentang, sembunyikan select yang baru dibuat
+      const allKecEl = document.getElementById(`all-kecamatan-${tabName}`);
+      if (allKecEl && allKecEl.checked) select.style.display = 'none';
     } else {
-      kecamatanInput.style.display = 'block';
+      // Tampilkan input text hanya jika "semua kecamatan" tidak dicentang
+      const allKecElInner = document.getElementById(`all-kecamatan-${tabName}`);
+      if (!allKecElInner || !allKecElInner.checked) kecamatanInput.style.display = 'block';
       // pastikan dropdown desa/faskes sudah dihapus saat kembali ke input manual
       removeDesaDropdown(kecamatanContainer);
     }
   } else {
     // Jika tidak ada atau lebih dari 1 kabupaten dipilih, tampilkan input text dan kosongkan nilai
     kecamatanInput.value = '';
-    kecamatanInput.style.display = 'block';
+    const allKecElOuter = document.getElementById(`all-kecamatan-${tabName}`);
+    if (!allKecElOuter || !allKecElOuter.checked) kecamatanInput.style.display = 'block';
     removeDesaDropdown(kecamatanContainer);
   }
 }
@@ -423,6 +437,79 @@ function setupAllDesaFaskes(tabName) {
 setupAllDesaFaskes('tahunan');
 setupAllDesaFaskes('bulanan');
 
+// Render daftar kecamatan dari kecamatanData berdasarkan kab/kota terpilih
+function renderKecamatanList(tabName) {
+  const listContainer = document.getElementById(`list-kecamatan-${tabName}`);
+  if (!listContainer) return;
+  const checked = document.querySelectorAll(`#cities-${tabName} input[type="checkbox"]:checked`);
+  if (checked.length !== 1) {
+    listContainer.innerHTML = '<div style="color:#a00;">Pilih tepat satu kab/kota terlebih dahulu.</div>';
+    listContainer.style.display = 'block';
+    return;
+  }
+  const kabId = checked[0].value;
+  const kecList = kecamatanData[kabId] || [];
+  if (kecList.length > 0) {
+    listContainer.innerHTML = kecList.map(item => `<div>${item}</div>`).join('');
+    listContainer.style.display = 'block';
+  } else {
+    listContainer.innerHTML = '<div style="color:#a00;">Data kecamatan tidak tersedia.</div>';
+    listContainer.style.display = 'block';
+  }
+}
+
+// Event handler untuk checkbox Semua Kecamatan
+function setKecamatanInputVisibility(tabName, visible) {
+  const input = document.getElementById(`kecamatan-${tabName}`);
+  const select = document.getElementById(`kecamatan-select-${tabName}`);
+  if (!visible) {
+    if (input) input.style.display = 'none';
+    if (select) select.style.display = 'none';
+  } else {
+    // Restore: show select if it exists (1 kab selected), otherwise show text input
+    if (select) {
+      select.style.display = 'block';
+      if (input) input.style.display = 'none';
+    } else {
+      if (input) input.style.display = 'block';
+    }
+  }
+}
+
+function setDesaFaskesDisabled(tabName, disabled) {
+  const desaInput = document.getElementById(tabName === 'tahunan' ? 'desa-tahunan' : 'faskes-bulanan');
+  const allDesaEl = document.getElementById(tabName === 'tahunan' ? 'all-desa-tahunan' : 'all-faskes-bulanan');
+  if (desaInput) {
+    desaInput.disabled = disabled;
+    desaInput.style.opacity = disabled ? '0.4' : '';
+  }
+  if (allDesaEl) {
+    allDesaEl.disabled = disabled;
+    if (allDesaEl.parentElement) allDesaEl.parentElement.style.opacity = disabled ? '0.4' : '';
+  }
+}
+
+function setupAllKecamatan(tabName) {
+  const allCheckbox = document.getElementById(`all-kecamatan-${tabName}`);
+  const listContainer = document.getElementById(`list-kecamatan-${tabName}`);
+  if (!allCheckbox || !listContainer) return;
+  allCheckbox.addEventListener('change', function () {
+    if (this.checked) {
+      setKecamatanInputVisibility(tabName, false);
+      setDesaFaskesDisabled(tabName, true);
+      renderKecamatanList(tabName);
+    } else {
+      setKecamatanInputVisibility(tabName, true);
+      setDesaFaskesDisabled(tabName, false);
+      listContainer.innerHTML = '';
+      listContainer.style.display = 'none';
+    }
+  });
+}
+
+setupAllKecamatan('tahunan');
+setupAllKecamatan('bulanan');
+
 // Tab switching
 const tabButtons = document.querySelectorAll('.tab-button');
 const tabContents = document.querySelectorAll('.tab-content');
@@ -488,8 +575,9 @@ function renderDownloadTab() {
       let progress = item.totalFiles > 0 ? Math.round((item.filesCompleted / item.totalFiles) * 100) : 0;
       let fileTerakhir = item.fileAkhir ? `File terakhir : ${item.fileAkhir}` : '';
       let placeLabel = '';
-      if (item.desa) placeLabel = `Desa: ${item.desa}`;
-      else if (item.faskes) placeLabel = `Desa/Faskes: ${item.faskes}`;
+      if (item.kecamatan) placeLabel += `Kecamatan: ${item.kecamatan}`;
+      if (item.desa) placeLabel += (placeLabel ? ' | ' : '') + `Desa: ${item.desa}`;
+      else if (item.faskes) placeLabel += (placeLabel ? ' | ' : '') + `Desa/Faskes: ${item.faskes}`;
 
       // Progress bar dengan warna dinamis
       let progressColor = statClass === "success" ? "#18af34" : statClass === "fail" ? "#e12121" : "#484dde";
@@ -691,8 +779,9 @@ function initializeDownloadProgress(downloadQueue) {
       filesCompleted: 0,
       fileAkhir: firstFile,
       urlIndex: idxCounter++,
-      // keep kota/desa/faskes for display in progress UI
+      // keep kota/kecamatan/desa/faskes for display in progress UI
       kota: item.kota || '',
+      kecamatan: item.kecamatan || '',
       desa: item.desa || '',
       faskes: item.faskes || ''
     };
@@ -772,6 +861,9 @@ function setupFormSubmit(formId, tabName) {
       let queue = [];
       const allDesaChecked = document.getElementById('all-desa-tahunan')?.checked;
       const allFaskesChecked = document.getElementById('all-faskes-bulanan')?.checked;
+      const allKecamatanChecked = tabName === 'tahunan'
+        ? document.getElementById('all-kecamatan-tahunan')?.checked
+        : document.getElementById('all-kecamatan-bulanan')?.checked;
 
       // Jika user pilih banyak kab/kota, setiap kab/kota dibuka di tab terpisah (mirip banyak url)
       if (selectedCities.length > 1) {
@@ -779,6 +871,22 @@ function setupFormSubmit(formId, tabName) {
         selectedCities.forEach(cityId => {
           urls.forEach(url => {
             queue.push({ kota: cityNameMap[cityId], url });
+          });
+        });
+      } else if (selectedCities.length === 1 && allKecamatanChecked) {
+        // Satu kab/kota, semua kecamatan: setiap kecamatan = tab terpisah
+        const kabId = selectedCities[0];
+        let kecList = Array.from(document.querySelectorAll(`#list-kecamatan-${tabName} div`)).map(div => div.textContent.trim());
+        // Fallback ke kecamatanData jika list belum di-render
+        if (kecList.length === 0) kecList = kecamatanData[kabId] || [];
+        kecList = [...new Set(kecList)].filter(k => !k.startsWith('Pilih'));
+        if (kecList.length === 0) {
+          alert('⚠️ Daftar kecamatan kosong. Pilih satu kabupaten/kota yang benar.');
+          return;
+        }
+        urls.forEach(url => {
+          kecList.forEach(kec => {
+            queue.push({ kota: cityNameMap[kabId], url, kecamatan: kec });
           });
         });
       } else if (selectedCities.length === 1 && ((tabName === 'tahunan' && allDesaChecked) || (tabName === 'bulanan' && allFaskesChecked))) {
@@ -793,7 +901,7 @@ function setupFormSubmit(formId, tabName) {
           }
           urls.forEach(url => {
             desaList.forEach(desa => {
-              queue.push({ kota: cityNameMap[selectedCities[0]], url, desa });
+              queue.push({ kota: cityNameMap[selectedCities[0]], url, kecamatan, desa });
             });
           });
         } else if (tabName === 'bulanan' && allFaskesChecked) {
@@ -806,7 +914,7 @@ function setupFormSubmit(formId, tabName) {
           }
           urls.forEach(url => {
             faskesList.forEach(faskes => {
-              queue.push({ kota: cityNameMap[selectedCities[0]], url, faskes });
+              queue.push({ kota: cityNameMap[selectedCities[0]], url, kecamatan, faskes });
             });
           });
         }
@@ -836,7 +944,7 @@ function setupFormSubmit(formId, tabName) {
       // Jika mode banyak desa/faskes, kirim ke background satu per tab (bukan satu queue besar)
       // DEBUG LOG: tampilkan queue sebelum dikirim ke background
       console.log('[DEBUG][popup] Queue to background:', queue);
-      if ((selectedCities.length === 1 && ((tabName === 'tahunan' && allDesaChecked) || (tabName === 'bulanan' && allFaskesChecked))) || selectedCities.length > 1) {
+      if ((selectedCities.length === 1 && (allKecamatanChecked || (tabName === 'tahunan' && allDesaChecked) || (tabName === 'bulanan' && allFaskesChecked))) || selectedCities.length > 1) {
         // Setiap item queue = 1 tab
         resetDownloadProgress(() => {
           switchToDownloadTab();
@@ -845,10 +953,11 @@ function setupFormSubmit(formId, tabName) {
             queue.forEach((item, idx) => {
               // Data untuk 1 tab
               const singleQueue = [item];
+              const itemKecamatan = item.kecamatan || kecamatan;
               const dataSingle = {
                 tab: tabName,
                 periode,
-                kecamatan,
+                kecamatan: itemKecamatan,
                 jenisLaporan,
                 selectedCities,
                 downloadQueue: singleQueue,
@@ -857,7 +966,7 @@ function setupFormSubmit(formId, tabName) {
               let payload = {
                 periode,
                 kab: (item.kota || '').toString().replace(/^\d+\s*-\s*/, '').trim(),
-                kec: kecamatan
+                kec: itemKecamatan
               };
               if (tabName === 'bulanan') {
                 dataSingle.faskes = item.faskes || '';
