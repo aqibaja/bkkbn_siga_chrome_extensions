@@ -1097,6 +1097,34 @@ const fieldVisibilityConfig = {
   },
   'elsimil': {
     tahunan: { hide: ['rw-tahunan', 'sasaran-tahunan'] }
+  },
+  'rekap-keluarga': {
+    hideTabs: ['tahunan'],
+    bulanan: { hide: ['jenis-laporan-bulanan'] }
+  },
+  'krs-keluarga': {
+    hideTabs: ['tahunan'],
+    bulanan: { hide: ['jenis-laporan-bulanan'] }
+  },
+  'monitoring-krs': {
+    hideTabs: ['tahunan'],
+    bulanan: { hide: ['jenis-laporan-bulanan'] }
+  },
+  'catin': {
+    hideTabs: ['tahunan'],
+    bulanan: { hide: ['jenis-laporan-bulanan'] }
+  },
+  'ibu-hamil': {
+    hideTabs: ['tahunan'],
+    bulanan: { hide: ['jenis-laporan-bulanan'] }
+  },
+  'pascapersalinan': {
+    hideTabs: ['tahunan'],
+    bulanan: { hide: ['jenis-laporan-bulanan'] }
+  },
+  'baduta': {
+    hideTabs: ['tahunan'],
+    bulanan: { hide: ['jenis-laporan-bulanan'] }
   }
   // additional sub-menu configs will be added here as each report type is built out
 };
@@ -1129,17 +1157,25 @@ function applyFieldVisibility(reportId) {
       const btn = document.querySelector(`.tab-button[data-tab="${tab}"]`);
       if (btn) {
         btn.style.display = 'none';
-        // If this hidden tab is currently active, switch to tahunan
+        // If this hidden tab is currently active, switch to the first visible tab
         if (btn.classList.contains('active')) {
           btn.classList.remove('active');
           document.getElementById(`${tab}-content`).classList.remove('active');
-          const tahunanBtn = document.querySelector('.tab-button[data-tab="tahunan"]');
-          if (tahunanBtn) tahunanBtn.classList.add('active');
-          const tahunanContent = document.getElementById('tahunan-content');
-          if (tahunanContent) tahunanContent.classList.add('active');
         }
       }
     });
+
+    // After hiding tabs, if no tab is active, activate the first visible one
+    const anyActive = document.querySelector('.tab-button.active');
+    if (!anyActive) {
+      const firstVisible = document.querySelector('.tab-button:not([style*="display: none"]):not([style*="display:none"])');
+      if (firstVisible) {
+        firstVisible.classList.add('active');
+        const firstVisibleTab = firstVisible.getAttribute('data-tab');
+        const firstVisibleContent = document.getElementById(`${firstVisibleTab}-content`);
+        if (firstVisibleContent) firstVisibleContent.classList.add('active');
+      }
+    }
   }
 
   // Recalculate grid columns based on visible tab buttons
