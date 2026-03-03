@@ -107,6 +107,13 @@ textarea {
     min-height: 120px;
 }
 
+textarea[readonly] {
+    background-color: #f5f5f7;
+    color: #555;
+    cursor: default;
+    user-select: none;
+}
+
 select {
     cursor: pointer;
     appearance: none;
@@ -187,6 +194,16 @@ h3 {
     border-radius: 10px;
     padding: 16px;
     background-color: #ffffff;
+}
+
+/* Tabel Checklist Grid — compact 3-column, scrollable */
+.tabel-checkbox-grid {
+    grid-template-columns: repeat(3, 1fr);
+    max-height: 220px;
+    overflow-y: auto;
+    gap: 8px;
+    padding: 12px;
+    font-size: 13px;
 }
 
 .checkbox-item {

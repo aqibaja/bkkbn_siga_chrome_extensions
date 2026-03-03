@@ -1,3 +1,52 @@
+// ──────────────────────────────────────────────────────────
+// DATA URL TABEL PER MENU — dimuat dari JSON
+// ──────────────────────────────────────────────────────────
+
+// Akan diisi setelah JSON dimuat
+let urlTableData = { bulanan: {}, tahunan: {} };
+
+/**
+ * Parse flat JSON array (format: id hanya diisi pada baris pertama per grup)
+ * menjadi objek { [menuId]: [{ url, nama }] }.
+ * Grup dengan 1 URL otomatis diberi autoFill: true.
+ */
+function parseUrlJson(rawArray) {
+  const result = {};
+  let currentId = null;
+  rawArray.forEach(entry => {
+    if (!entry.url || !entry.url.trim()) return; // skip baris kosong
+    if (entry.id && entry.id.trim()) currentId = entry.id.trim();
+    if (!currentId) return;
+    if (!result[currentId]) result[currentId] = [];
+    // Toleran untuk "nama" atau "Nama" (perbedaan huruf kapital antar file)
+    const nama = entry.nama || entry.Nama || entry.url;
+    result[currentId].push({ url: entry.url.trim(), nama: nama.trim() });
+  });
+  // Grup yang hanya punya 1 URL → autoFill (langsung isi textarea, tanpa checklist)
+  Object.keys(result).forEach(id => {
+    if (result[id].length === 1) result[id][0].autoFill = true;
+  });
+  return result;
+}
+
+async function loadUrlData() {
+  try {
+    const [resBulanan, resTahunan] = await Promise.all([
+      fetch('url-bulanan.json'),
+      fetch('url-tahunan.json')
+    ]);
+    const [rawBulanan, rawTahunan] = await Promise.all([
+      resBulanan.json(),
+      resTahunan.json()
+    ]);
+    urlTableData.bulanan = parseUrlJson(rawBulanan);
+    urlTableData.tahunan = parseUrlJson(rawTahunan);
+    console.log('[urlTableData] loaded — bulanan keys:', Object.keys(urlTableData.bulanan), '| tahunan keys:', Object.keys(urlTableData.tahunan));
+  } catch (e) {
+    console.error('Gagal load url data:', e);
+  }
+}
+
 // Helper function untuk encode URL yang aman dengan Unicode
 function safeUrlHash(url) {
   try {
@@ -27,8 +76,9 @@ async function loadWilayahData() {
     console.error('Gagal load data wilayah:', e);
   }
 }
-// Panggil loadWilayahData saat popup dibuka
+// Panggil saat popup dibuka
 loadWilayahData();
+loadUrlData();
 
 // Data kota
 const cities = [
@@ -1242,6 +1292,104 @@ const fieldVisibilityConfig = {
 const hideableTahunan = ['rw-tahunan', 'sasaran-tahunan', 'jenis-laporan-tahunan'];
 const hideableBulanan = ['jenis-laporan-bulanan'];
 
+// ──────────────────────────────────────────────────────────
+// TABEL SELECTOR (checklist tabel per menu)
+// ──────────────────────────────────────────────────────────
+
+/**
+ * Sinkronkan URL dari tabel yang dicentang ke textarea URL.
+ */
+function syncTabelToUrl(tabName) {
+  const checkboxes = document.querySelectorAll(`#tabel-checkboxes-${tabName} input[type="checkbox"]:checked`);
+  const urls = Array.from(checkboxes).map(cb => cb.value);
+  const textarea = document.getElementById(`urls-${tabName}`);
+  if (textarea) {
+    textarea.value = urls.join('\n');
+    updateUrlCount(tabName);
+  }
+  // Update counter label
+  const counter = document.getElementById(`tabel-count-${tabName}`);
+  if (counter) {
+    const total = document.querySelectorAll(`#tabel-checkboxes-${tabName} input[type="checkbox"]`).length;
+    counter.textContent = `${urls.length} dari ${total} tabel dipilih`;
+    counter.style.color = urls.length === 0 ? '#a00' : '#555';
+  }
+}
+
+/**
+ * Render checklist tabel berdasarkan submenu yang aktif.
+ * Jika menu hanya 1 URL dan autoFill=true, langsung isi textarea tanpa checklist.
+ */
+function renderTabelSelector(tabName, submenuId) {
+  const selectorDiv = document.getElementById(`tabel-selector-${tabName}`);
+  const checkboxesDiv = document.getElementById(`tabel-checkboxes-${tabName}`);
+  const textarea = document.getElementById(`urls-${tabName}`);
+  if (!selectorDiv || !checkboxesDiv || !textarea) return;
+
+  const entries = urlTableData[tabName] && urlTableData[tabName][submenuId];
+
+  if (!entries || entries.length === 0) {
+    selectorDiv.style.display = 'none';
+    return;
+  }
+
+  // Jika semua entri adalah autoFill (single-URL), isi textarea langsung
+  if (entries.every(e => e.autoFill)) {
+    selectorDiv.style.display = 'none';
+    textarea.value = entries.map(e => e.url).join('\n');
+    updateUrlCount(tabName);
+    return;
+  }
+
+  // Tampilkan checklist
+  selectorDiv.style.display = 'block';
+  checkboxesDiv.innerHTML = '';
+
+  entries.forEach((entry, idx) => {
+    const item = document.createElement('div');
+    item.className = 'checkbox-item';
+
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.id = `tabel-${tabName}-${idx}`;
+    cb.value = entry.url;
+    cb.addEventListener('change', () => syncTabelToUrl(tabName));
+
+    const lbl = document.createElement('label');
+    lbl.htmlFor = `tabel-${tabName}-${idx}`;
+    lbl.textContent = entry.nama;
+    lbl.title = entry.url;
+
+    item.appendChild(cb);
+    item.appendChild(lbl);
+    checkboxesDiv.appendChild(item);
+  });
+
+  // Update counter
+  const counter = document.getElementById(`tabel-count-${tabName}`);
+  if (counter) counter.textContent = `0 dari ${entries.length} tabel dipilih`;
+
+  // Pasang tombol Pilih Semua & Reset
+  const selectAllBtn = document.getElementById(`select-all-tabel-${tabName}`);
+  const resetBtn = document.getElementById(`reset-tabel-${tabName}`);
+  if (selectAllBtn) {
+    selectAllBtn.onclick = () => {
+      checkboxesDiv.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = true);
+      syncTabelToUrl(tabName);
+    };
+  }
+  if (resetBtn) {
+    resetBtn.onclick = () => {
+      checkboxesDiv.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+      syncTabelToUrl(tabName);
+    };
+  }
+
+  // Kosongkan textarea saat checklist pertama kali muncul (agar user mulai dari kosong)
+  textarea.value = '';
+  updateUrlCount(tabName);
+}
+
 function applyFieldVisibility(reportId) {
   // First restore all fields
   [...hideableTahunan, ...hideableBulanan].forEach(id => {
@@ -1293,6 +1441,17 @@ function applyFieldVisibility(reportId) {
     const visibleCount = tabsBar.querySelectorAll('.tab-button:not([style*="display: none"]):not([style*="display:none"])').length;
     tabsBar.style.gridTemplateColumns = `repeat(${visibleCount}, 1fr)`;
   }
+
+  // Render tabel selector untuk setiap tab (sebelum early-return agar selalu diproses)
+  ['tahunan', 'bulanan'].forEach(tab => {
+    const tabHidden = config && config.hideTabs && config.hideTabs.includes(tab);
+    if (!tabHidden) {
+      renderTabelSelector(tab, reportId);
+    } else {
+      const selectorDiv = document.getElementById(`tabel-selector-${tab}`);
+      if (selectorDiv) selectorDiv.style.display = 'none';
+    }
+  });
 
   if (!config) return;
 
