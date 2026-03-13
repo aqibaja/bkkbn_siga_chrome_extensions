@@ -85,15 +85,15 @@
             </div>
             <div id="cities-tahunan" class="checkbox-grid"></div>
           </div>
-          <div class="form-group">
-            <label for="kecamatan-tahunan">Kecamatan:</label>
-            <input type="text" id="kecamatan-tahunan" placeholder="Contoh: 01 - LHOONG">
-            <div style="margin-top:6px; font-size:13px;">
-              <input type="checkbox" id="all-kecamatan-tahunan" /> <label for="all-kecamatan-tahunan">Download semua
-                kecamatan untuk kab/kota ini</label>
+          <div class="form-group" id="kecamatan-group-tahunan" style="display:none;">
+            <label>Pilih Kecamatan (bisa lebih dari satu):</label>
+            <!-- Hidden input for JS value compatibility -->
+            <input type="text" id="kecamatan-tahunan" style="display:none;">
+            <div class="button-group" style="margin-bottom:6px;margin-top:6px;">
+              <button type="button" class="btn-outline" id="select-all-kecamatan-tahunan">Pilih Semua</button>
+              <button type="button" class="btn-outline" id="reset-kecamatan-tahunan">Reset</button>
             </div>
-            <div id="list-kecamatan-tahunan"
-              style="display:none; margin-top:8px; max-height:200px; overflow:auto; border:1px solid #eee; padding:6px; border-radius:6px;">
+            <div id="kecamatan-checkboxes-tahunan" class="checkbox-grid" style="max-height:200px;overflow-y:auto;">
             </div>
           </div>
           <div class="form-group">
@@ -106,6 +106,10 @@
             <div id="list-desa-tahunan"
               style="display:none; margin-top:8px; max-height:200px; overflow:auto; border:1px solid #eee; padding:6px; border-radius:6px;">
             </div>
+            <div id="desa-count-tahunan"
+              style="display:none; margin-top:5px; font-size:12px; font-weight:600; color:#484dde;"></div>
+            <div id="desa-count-tahunan"
+              style="display:none; margin-top:5px; font-size:12px; font-weight:600; color:#484dde;"></div>
           </div>
           <div class="form-group">
             <label for="rw-tahunan">RW:</label>
@@ -177,15 +181,15 @@
             </div>
             <div id="cities-bulanan" class="checkbox-grid"></div>
           </div>
-          <div class="form-group">
-            <label for="kecamatan-bulanan">Kecamatan:</label>
-            <input type="text" id="kecamatan-bulanan" placeholder="Contoh: 01 - LHOONG">
-            <div style="margin-top:6px; font-size:13px;">
-              <input type="checkbox" id="all-kecamatan-bulanan" /> <label for="all-kecamatan-bulanan">Download semua
-                kecamatan untuk kab/kota ini</label>
+          <div class="form-group" id="kecamatan-group-bulanan" style="display:none;">
+            <label>Pilih Kecamatan (bisa lebih dari satu):</label>
+            <!-- Hidden input for JS value compatibility -->
+            <input type="text" id="kecamatan-bulanan" style="display:none;">
+            <div class="button-group" style="margin-bottom:6px;margin-top:6px;">
+              <button type="button" class="btn-outline" id="select-all-kecamatan-bulanan">Pilih Semua</button>
+              <button type="button" class="btn-outline" id="reset-kecamatan-bulanan">Reset</button>
             </div>
-            <div id="list-kecamatan-bulanan"
-              style="display:none; margin-top:8px; max-height:200px; overflow:auto; border:1px solid #eee; padding:6px; border-radius:6px;">
+            <div id="kecamatan-checkboxes-bulanan" class="checkbox-grid" style="max-height:200px;overflow-y:auto;">
             </div>
           </div>
           <div class="form-group">
@@ -198,6 +202,8 @@
             <div id="list-faskes-bulanan"
               style="display:none; margin-top:8px; max-height:200px; overflow:auto; border:1px solid #eee; padding:6px; border-radius:6px;">
             </div>
+            <div id="desa-count-bulanan"
+              style="display:none; margin-top:5px; font-size:12px; font-weight:600; color:#484dde;"></div>
           </div>
           <div class="form-group">
             <label for="jenis-laporan-bulanan">Jenis Laporan:</label>

@@ -152,17 +152,10 @@ function renderCheckboxes(containerId, tabName) {
     checkboxItem.appendChild(label);
     container.appendChild(checkboxItem);
 
-    // Event listener untuk update dropdown kecamatan
+    // Event listener untuk update checkbox kecamatan
     checkbox.addEventListener('change', () => {
       updateKecamatanDropdown(tabName);
       handleDisableInputs(tabName);
-      // Re-apply semua kecamatan state if still checked
-      const allKecEl = document.getElementById(`all-kecamatan-${tabName}`);
-      if (allKecEl && allKecEl.checked) {
-        setKecamatanInputVisibility(tabName, false);
-        setDesaFaskesDisabled(tabName, true);
-        renderKecamatanList(tabName);
-      }
     });
   });
 
@@ -174,8 +167,11 @@ function renderCheckboxes(containerId, tabName) {
     const disable = checked.length > 1;
     // Daftar id input yang harus di-disable
     const idsToDisable = tabName === 'tahunan'
-      ? ['kecamatan-tahunan', 'desa-tahunan', 'all-desa-tahunan', 'all-kecamatan-tahunan', 'rw-tahunan', 'sasaran-tahunan']
-      : ['kecamatan-bulanan', 'faskes-bulanan', 'all-faskes-bulanan', 'all-kecamatan-bulanan', 'tahun'];
+      ? ['desa-tahunan', 'all-desa-tahunan', 'rw-tahunan', 'sasaran-tahunan']
+      : ['faskes-bulanan', 'all-faskes-bulanan', 'tahun'];
+    // Sembunyikan group kecamatan jika lebih dari 1 kab dipilih
+    const kecGroup = document.getElementById(`kecamatan-group-${tabName}`);
+    if (kecGroup) kecGroup.style.display = disable ? 'none' : '';
     idsToDisable.forEach(id => {
       const el = document.getElementById(id);
       if (el) el.disabled = disable;
@@ -187,88 +183,125 @@ function renderCheckboxes(containerId, tabName) {
   }
 }
 
-// Fungsi untuk update dropdown kecamatan berdasarkan kabupaten yang dipilih
+// Tampilkan/sembunyikan group kecamatan berdasarkan kab/kota yang dipilih
 function updateKecamatanDropdown(tabName) {
   const checkboxes = document.querySelectorAll(`#cities-${tabName} input[type="checkbox"]:checked`);
   const selectedCities = Array.from(checkboxes).map(cb => cb.value);
 
-  const kecamatanInput = document.getElementById(`kecamatan-${tabName}`);
-  const kecamatanContainer = kecamatanInput.parentElement;
+  const kecGroup = document.getElementById(`kecamatan-group-${tabName}`);
+  const kecCheckboxContainer = document.getElementById(`kecamatan-checkboxes-${tabName}`);
+  const kecInput = document.getElementById(`kecamatan-${tabName}`);
 
-  // Hapus dropdown lama jika ada
-  const existingSelect = kecamatanContainer.querySelector('select');
-  if (existingSelect) existingSelect.remove();
-  // Hapus juga dropdown desa/faskes lama jika ada supaya input manual muncul kembali
-  removeDesaDropdown(kecamatanContainer);
-
-  // Jika hanya 1 kabupaten dipilih, tampilkan dropdown
   if (selectedCities.length === 1) {
-    const cityId = selectedCities[0];
-    const kecamatanList = kecamatanData[cityId] || [];
-
-    if (kecamatanList.length > 0) {
-      // Sembunyikan input text
-      kecamatanInput.style.display = 'none';
-
-      // Buat dropdown select
-      const select = document.createElement('select');
-      select.id = `kecamatan-select-${tabName}`;
-      select.style.width = '100%';
-
-      const defaultOption = document.createElement('option');
-      defaultOption.value = '';
-      defaultOption.textContent = 'Pilih Kecamatan';
-      defaultOption.selected = true;
-      select.appendChild(defaultOption);
-
-      console.log('[kec] create select for city', cityId, 'items', kecamatanList.length);
-      kecamatanList.forEach(kec => {
-        const option = document.createElement('option');
-        option.value = kec;
-        option.textContent = kec;
-        select.appendChild(option);
-      });
-
-      // Jika input kecamatan sudah berisi nilai (mis. restored), pilihkan di select
-      if (kecamatanInput.value) {
-        const match = Array.from(select.options).find(o => o.value === kecamatanInput.value);
-        if (match) {
-          select.value = kecamatanInput.value;
-          // render desa sesuai nilai yang sudah ada
-          renderDesaDropdown(tabName, cityId, select.value);
-        }
-      }
-
-      // Event listener untuk sync value ke input text and render dropdown desa
-      select.addEventListener('change', (e) => {
-        kecamatanInput.value = e.target.value;
-        // Reset previous desa/faskes input value when kecamatan berubah
-        const desaInputEl = document.getElementById('desa-tahunan');
-        const faskesInputEl = document.getElementById('faskes-bulanan');
-        if (desaInputEl) desaInputEl.value = '';
-        if (faskesInputEl) faskesInputEl.value = '';
-        // Render desa/faskes dropdown otomatis
-        renderDesaDropdown(tabName, cityId, e.target.value);
-      });
-
-      kecamatanContainer.appendChild(select);
-
-      // Jika "semua kecamatan" sudah dicentang, sembunyikan select yang baru dibuat
-      const allKecEl = document.getElementById(`all-kecamatan-${tabName}`);
-      if (allKecEl && allKecEl.checked) select.style.display = 'none';
-    } else {
-      // Tampilkan input text hanya jika "semua kecamatan" tidak dicentang
-      const allKecElInner = document.getElementById(`all-kecamatan-${tabName}`);
-      if (!allKecElInner || !allKecElInner.checked) kecamatanInput.style.display = 'block';
-      // pastikan dropdown desa/faskes sudah dihapus saat kembali ke input manual
-      removeDesaDropdown(kecamatanContainer);
-    }
+    // Tampilkan group kecamatan dan render checkboxes
+    if (kecGroup) kecGroup.style.display = '';
+    renderKecamatanCheckboxes(tabName, selectedCities[0]);
   } else {
-    // Jika tidak ada atau lebih dari 1 kabupaten dipilih, tampilkan input text dan kosongkan nilai
-    kecamatanInput.value = '';
-    const allKecElOuter = document.getElementById(`all-kecamatan-${tabName}`);
-    if (!allKecElOuter || !allKecElOuter.checked) kecamatanInput.style.display = 'block';
-    removeDesaDropdown(kecamatanContainer);
+    // Sembunyikan group kecamatan, reset semua state
+    if (kecGroup) kecGroup.style.display = 'none';
+    if (kecCheckboxContainer) kecCheckboxContainer.innerHTML = '';
+    if (kecInput) kecInput.value = '';
+    // Reset desa/faskes section
+    const desaInputId = tabName === 'tahunan' ? 'desa-tahunan' : 'faskes-bulanan';
+    const desaInput = document.getElementById(desaInputId);
+    if (desaInput) {
+      desaInput.style.display = 'block';
+      desaInput.value = '';
+      desaInput.disabled = false;
+      desaInput.style.opacity = '';
+    }
+    const listContainer = document.getElementById(tabName === 'tahunan' ? 'list-desa-tahunan' : 'list-faskes-bulanan');
+    if (listContainer) { listContainer.innerHTML = ''; listContainer.style.display = 'none'; }
+    if (kecInput) removeDesaDropdown(kecInput.parentElement);
+  }
+}
+
+// Render checkboxes kecamatan untuk kab tertentu
+function renderKecamatanCheckboxes(tabName, kabId) {
+  const container = document.getElementById(`kecamatan-checkboxes-${tabName}`);
+  if (!container) return;
+  // Simpan pilihan sebelumnya
+  const prevSelected = new Set(getSelectedKecamatan(tabName));
+  container.innerHTML = '';
+  const kecList = kecamatanData[kabId] || [];
+  kecList.forEach((kec, idx) => {
+    const item = document.createElement('div');
+    item.className = 'checkbox-item';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.id = `kec-${tabName}-${idx}`;
+    cb.value = kec;
+    if (prevSelected.has(kec)) cb.checked = true;
+    const lbl = document.createElement('label');
+    lbl.htmlFor = `kec-${tabName}-${idx}`;
+    lbl.textContent = kec;
+    item.appendChild(cb);
+    item.appendChild(lbl);
+    container.appendChild(item);
+    cb.addEventListener('change', () => onKecamatanSelectionChange(tabName, kabId));
+  });
+  // Pasang tombol Pilih Semua / Reset kecamatan
+  const selectAllBtn = document.getElementById(`select-all-kecamatan-${tabName}`);
+  const resetBtn = document.getElementById(`reset-kecamatan-${tabName}`);
+  if (selectAllBtn) {
+    selectAllBtn.onclick = () => {
+      container.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = true);
+      onKecamatanSelectionChange(tabName, kabId);
+    };
+  }
+  if (resetBtn) {
+    resetBtn.onclick = () => {
+      container.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+      onKecamatanSelectionChange(tabName, kabId);
+    };
+  }
+  // Terapkan state berdasarkan pilihan saat ini
+  onKecamatanSelectionChange(tabName, kabId);
+}
+
+// Kembalikan array kecamatan yang dipilih
+function getSelectedKecamatan(tabName) {
+  const checkboxes = document.querySelectorAll(`#kecamatan-checkboxes-${tabName} input[type="checkbox"]:checked`);
+  return Array.from(checkboxes).map(cb => cb.value);
+}
+
+// Tangani perubahan pilihan kecamatan: update hidden input + visibilitas desa
+function onKecamatanSelectionChange(tabName, kabId) {
+  const selected = getSelectedKecamatan(tabName);
+  const kecInput = document.getElementById(`kecamatan-${tabName}`);
+  if (kecInput) kecInput.value = selected.length >= 1 ? selected[0] : '';
+
+  const desaInputId = tabName === 'tahunan' ? 'desa-tahunan' : 'faskes-bulanan';
+  const allDesaId = tabName === 'tahunan' ? 'all-desa-tahunan' : 'all-faskes-bulanan';
+  const desaInput = document.getElementById(desaInputId);
+  const allDesaEl = document.getElementById(allDesaId);
+
+  if (selected.length === 0) {
+    // Tidak ada kecamatan: nonaktifkan desa
+    setDesaFaskesDisabled(tabName, true);
+    if (kecInput) removeDesaDropdown(kecInput.parentElement);
+  } else if (selected.length === 1) {
+    // Satu kecamatan: aktifkan desa dan render dropdown
+    setDesaFaskesDisabled(tabName, false);
+    if (desaInput && (!allDesaEl || !allDesaEl.checked)) {
+      desaInput.style.display = 'block';
+    }
+    renderDesaDropdown(tabName, kabId, selected[0]);
+    if (allDesaEl && allDesaEl.checked) renderListDesaFaskes(tabName);
+  } else {
+    // Lebih dari 1 kecamatan: nonaktifkan input manual desa, aktifkan "semua desa"
+    if (desaInput) {
+      desaInput.disabled = true;
+      desaInput.style.display = 'none';
+      desaInput.style.opacity = '0.4';
+    }
+    if (allDesaEl) {
+      allDesaEl.disabled = false;
+      if (allDesaEl.parentElement) allDesaEl.parentElement.style.opacity = '';
+    }
+    if (kecInput) removeDesaDropdown(kecInput.parentElement);
+    // Perbarui daftar desa jika "semua desa" sudah dicentang
+    if (allDesaEl && allDesaEl.checked) renderListDesaFaskes(tabName);
   }
 }
 
@@ -276,43 +309,55 @@ function updateKecamatanDropdown(tabName) {
 renderCheckboxes('cities-tahunan', 'tahunan');
 renderCheckboxes('cities-bulanan', 'bulanan');
 
-// Helper: render daftar desa/faskes
+// Helper: render daftar desa/faskes — mendukung multi-kecamatan
 function renderListDesaFaskes(tabName) {
-  const kecamatan = document.getElementById(`kecamatan-${tabName}`).value;
   const listContainer = document.getElementById(tabName === 'tahunan' ? 'list-desa-tahunan' : 'list-faskes-bulanan');
   listContainer.innerHTML = '';
-  if (!kecamatan) {
-    listContainer.style.display = 'none';
-    return;
-  }
-  // Ambil kode kabupaten dari kota terpilih (hanya jika satu kabupaten)
+  // Butuh tepat satu kab/kota
   const checked = document.querySelectorAll(`#cities-${tabName} input[type="checkbox"]:checked`);
-  if (checked.length !== 1) {
-    listContainer.style.display = 'none';
-    return;
-  }
+  if (checked.length !== 1) { listContainer.style.display = 'none'; return; }
   const kabId = checked[0].value;
-  // Ambil kode kecamatan (misal: '01 - BAKONGAN' -> '01')
-  const kecName = (kecamatan.split('-')[1] || '').trim();
-  // Ambil list desa dari wilayahData jika tersedia (JSON berupa array)
+
+  // Ambil semua kecamatan yang dipilih (checkbox baru); fallback ke hidden input jika belum ada
+  let selectedKec = getSelectedKecamatan(tabName);
+  if (selectedKec.length === 0) {
+    const kecVal = document.getElementById(`kecamatan-${tabName}`).value;
+    if (!kecVal) { listContainer.style.display = 'none'; return; }
+    selectedKec = [kecVal];
+  }
+
+  // Kumpulkan desa dari semua kecamatan terpilih
   let list = [];
   if (Array.isArray(wilayahData)) {
     const kabNum = Number(kabId);
-    list = wilayahData
-      .filter(entry => {
-        // KODE KABUPATEN bisa berupa object seperti {"KOTA":1}
-        const kodeKabObj = entry['KODE KABUPATEN'];
-        const kodeKab = kodeKabObj && typeof kodeKabObj === 'object' ? Object.values(kodeKabObj)[0] : kodeKabObj;
-        const namaKec = (entry['NAMA KECAMATAN'] || '').toString().trim();
-        return Number(kodeKab) === kabNum && namaKec.toLowerCase() === kecName.toLowerCase();
-      })
-      .map(entry => `${entry['KODE DESA']} - ${entry['NAMA DESA']}`);
+    selectedKec.forEach(kec => {
+      const kecName = (kec.split('-')[1] || '').trim();
+      wilayahData
+        .filter(entry => {
+          const kodeKabObj = entry['KODE KABUPATEN'];
+          const kodeKab = kodeKabObj && typeof kodeKabObj === 'object' ? Object.values(kodeKabObj)[0] : kodeKabObj;
+          const namaKec = (entry['NAMA KECAMATAN'] || '').toString().trim();
+          return Number(kodeKab) === kabNum && namaKec.toLowerCase() === kecName.toLowerCase();
+        })
+        .forEach(entry => list.push({ kec, desa: `${entry['KODE DESA']} - ${entry['NAMA DESA']}` }));
+    });
   }
+
+  const countEl = document.getElementById(tabName === 'tahunan' ? 'desa-count-tahunan' : 'desa-count-bulanan');
+
   if (list.length > 0) {
     listContainer.style.display = 'block';
-    listContainer.innerHTML = list.map(item => `<div>${item}</div>`).join('');
+    // Simpan data-kec di setiap div agar submit handler bisa baca per-kecamatan
+    listContainer.innerHTML = list
+      .map(({ kec, desa }) => `<div data-kec="${kec.replace(/"/g, '&quot;')}">${desa}</div>`)
+      .join('');
+    if (countEl) {
+      countEl.textContent = `Total: ${list.length} desa/kel akan didownload`;
+      countEl.style.display = 'block';
+    }
   } else {
     listContainer.style.display = 'none';
+    if (countEl) countEl.style.display = 'none';
   }
 }
 
@@ -477,9 +522,16 @@ function setupAllDesaFaskes(tabName) {
       inputField.style.display = 'none';
       renderListDesaFaskes(tabName);
     } else {
-      // Show manual input and hide list
-      inputField.style.display = 'block';
       listContainer.style.display = 'none';
+      const countEl = document.getElementById(tabName === 'tahunan' ? 'desa-count-tahunan' : 'desa-count-bulanan');
+      if (countEl) countEl.style.display = 'none';
+      // Tampilkan kembali input manual hanya jika 0 atau 1 kecamatan dipilih
+      const selectedKec = getSelectedKecamatan(tabName);
+      if (selectedKec.length <= 1) {
+        inputField.style.display = 'block';
+        inputField.disabled = false;
+        inputField.style.opacity = '';
+      }
     }
   });
 }
@@ -911,9 +963,7 @@ function setupFormSubmit(formId, tabName) {
       let queue = [];
       const allDesaChecked = document.getElementById('all-desa-tahunan')?.checked;
       const allFaskesChecked = document.getElementById('all-faskes-bulanan')?.checked;
-      const allKecamatanChecked = tabName === 'tahunan'
-        ? document.getElementById('all-kecamatan-tahunan')?.checked
-        : document.getElementById('all-kecamatan-bulanan')?.checked;
+      const selectedKecamatan = getSelectedKecamatan(tabName);
 
       // Jika user pilih banyak kab/kota, setiap kab/kota dibuka di tab terpisah (mirip banyak url)
       if (selectedCities.length > 1) {
@@ -923,19 +973,45 @@ function setupFormSubmit(formId, tabName) {
             queue.push({ kota: cityNameMap[cityId], url });
           });
         });
-      } else if (selectedCities.length === 1 && allKecamatanChecked) {
-        // Satu kab/kota, semua kecamatan: setiap kecamatan = tab terpisah
+      } else if (selectedCities.length === 1 && selectedKecamatan.length > 1 && ((tabName === 'tahunan' && allDesaChecked) || (tabName === 'bulanan' && allFaskesChecked))) {
+        // Satu kab/kota, banyak kecamatan + semua desa → tab per desa per kecamatan (BARU)
         const kabId = selectedCities[0];
-        let kecList = Array.from(document.querySelectorAll(`#list-kecamatan-${tabName} div`)).map(div => div.textContent.trim());
-        // Fallback ke kecamatanData jika list belum di-render
-        if (kecList.length === 0) kecList = kecamatanData[kabId] || [];
-        kecList = [...new Set(kecList)].filter(k => !k.startsWith('Pilih'));
-        if (kecList.length === 0) {
-          alert('⚠️ Daftar kecamatan kosong. Pilih satu kabupaten/kota yang benar.');
-          return;
+        if (tabName === 'tahunan') {
+          let desaItems = Array.from(document.querySelectorAll('#list-desa-tahunan div'))
+            .map(div => ({ desa: div.textContent.trim(), kec: div.dataset.kec || kecamatan }))
+            .filter(item => item.desa);
+          desaItems = desaItems.filter((item, idx, arr) =>
+            arr.findIndex(d => d.desa === item.desa && d.kec === item.kec) === idx);
+          if (desaItems.length === 0) {
+            alert('⚠️ Daftar desa kosong. Pilih kecamatan dan kabupaten yang benar.');
+            return;
+          }
+          urls.forEach(url => {
+            desaItems.forEach(({ desa, kec }) => {
+              queue.push({ kota: cityNameMap[kabId], url, kecamatan: kec, desa });
+            });
+          });
+        } else {
+          let faskesItems = Array.from(document.querySelectorAll('#list-faskes-bulanan div'))
+            .map(div => ({ faskes: div.textContent.trim(), kec: div.dataset.kec || kecamatan }))
+            .filter(item => item.faskes);
+          faskesItems = faskesItems.filter((item, idx, arr) =>
+            arr.findIndex(f => f.faskes === item.faskes && f.kec === item.kec) === idx);
+          if (faskesItems.length === 0) {
+            alert('⚠️ Daftar faskes kosong. Pilih kecamatan dan kabupaten yang benar.');
+            return;
+          }
+          urls.forEach(url => {
+            faskesItems.forEach(({ faskes, kec }) => {
+              queue.push({ kota: cityNameMap[kabId], url, kecamatan: kec, faskes });
+            });
+          });
         }
+      } else if (selectedCities.length === 1 && selectedKecamatan.length > 1) {
+        // Satu kab/kota, banyak kecamatan, tanpa semua desa → tab per kecamatan (BARU)
+        const kabId = selectedCities[0];
         urls.forEach(url => {
-          kecList.forEach(kec => {
+          selectedKecamatan.forEach(kec => {
             queue.push({ kota: cityNameMap[kabId], url, kecamatan: kec });
           });
         });
@@ -994,7 +1070,7 @@ function setupFormSubmit(formId, tabName) {
       // Jika mode banyak desa/faskes, kirim ke background satu per tab (bukan satu queue besar)
       // DEBUG LOG: tampilkan queue sebelum dikirim ke background
       console.log('[DEBUG][popup] Queue to background:', queue);
-      if ((selectedCities.length === 1 && (allKecamatanChecked || (tabName === 'tahunan' && allDesaChecked) || (tabName === 'bulanan' && allFaskesChecked))) || selectedCities.length > 1) {
+      if ((selectedCities.length === 1 && (selectedKecamatan.length > 1 || (tabName === 'tahunan' && allDesaChecked) || (tabName === 'bulanan' && allFaskesChecked))) || selectedCities.length > 1) {
         // Setiap item queue = 1 tab
         resetDownloadProgress(() => {
           switchToDownloadTab();
