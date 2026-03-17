@@ -242,7 +242,17 @@
       </div>
       <!-- Tab Download Progress -->
       <div id="download-content" class="tab-content">
-        <h2 style="margin-bottom: 20px; font-size: 22px;">Download Progress</h2>
+        <h2 style="margin-bottom: 12px; font-size: 22px;">Download Progress</h2>
+        <div style="margin-bottom: 14px; display: flex; gap: 8px; flex-wrap: wrap;">
+          <button id="retry-all-btn" type="button"
+            style="background:#ff9800; color:#fff; border:none; padding:7px 14px; border-radius:6px; cursor:pointer; font-size:13px; font-weight:600;">
+            ♻️ Retry Semua Gagal &amp; Progress
+          </button>
+          <button id="clear-done-btn" type="button"
+            style="background:#555; color:#fff; border:none; padding:7px 14px; border-radius:6px; cursor:pointer; font-size:13px;">
+            🗑️ Bersihkan yang Selesai
+          </button>
+        </div>
         <div id="download-progress-list"></div>
       </div>
 

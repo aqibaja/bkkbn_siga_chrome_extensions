@@ -835,6 +835,84 @@ function handleCancelAndCloseTab(url) {
   });
 }
 
+// Handler untuk retry semua item gagal dan/atau masih progress
+function handleRetryAll() {
+  chrome.storage.local.get(null, function (data) {
+    const failedOrProgressEntries = Object.keys(data)
+      .filter(k => k.startsWith('tabdownload_'))
+      .filter(k => data[k].status === 'fail' || data[k].status === 'progress')
+      .map(k => data[k]);
+
+    if (failedOrProgressEntries.length === 0) {
+      alert('Tidak ada item yang gagal atau sedang berjalan untuk di-retry.');
+      return;
+    }
+
+    const uniqueUrls = [...new Set(failedOrProgressEntries.map(e => e.url).filter(Boolean))];
+
+    if (!confirm(`Retry semua ${failedOrProgressEntries.length} item (gagal/progress) untuk ${uniqueUrls.length} URL?\n\nProses ini akan memulai ulang semua download yang gagal atau terhenti.`)) return;
+
+    const autoKeys = Object.keys(data).filter(k => k.startsWith('auto_'));
+    let retryCount = 0;
+
+    uniqueUrls.forEach(url => {
+      for (const key of autoKeys) {
+        const autoData = data[key];
+        if (autoData && autoData.downloadQueue) {
+          const firstItem = autoData.downloadQueue[0];
+          if (firstItem && firstItem.url === url) {
+            const itemsToRetry = autoData.downloadQueue
+              .map((item, idx) => ({ item, idx }))
+              .filter(({ item }) => {
+                const itemHash = safeUrlHash(item.url);
+                const progressKeys = Object.keys(data).filter(k => k.startsWith(`tabdownload_${itemHash}`));
+                return progressKeys.some(pk => data[pk] && (data[pk].status === 'fail' || data[pk].status === 'progress'));
+              });
+
+            if (itemsToRetry.length > 0) {
+              retryCount += itemsToRetry.length;
+              const firstIdx = itemsToRetry[0].idx;
+              chrome.storage.local.set({ [key]: { ...autoData, currentIndex: firstIdx, retryCount: 0 } }, () => {
+                itemsToRetry.forEach(({ item }) => {
+                  const itemHash = safeUrlHash(item.url);
+                  const progressKeys = Object.keys(data).filter(k => k.startsWith(`tabdownload_${itemHash}`));
+                  progressKeys.forEach(pk => {
+                    if (data[pk] && (data[pk].status === 'fail' || data[pk].status === 'progress')) {
+                      chrome.storage.local.set({ [pk]: { ...data[pk], status: 'progress', fileAkhir: item.kota || 'Retry...' } });
+                    }
+                  });
+                });
+                chrome.runtime.sendMessage({ action: 'retryFailedUrl', url, targetKey: key });
+              });
+            }
+            break;
+          }
+        }
+      }
+    });
+
+    if (retryCount > 0) {
+      alert(`♻️ Retry dimulai untuk ${retryCount} item yang gagal/terhenti.`);
+    } else {
+      alert('Tidak ada item yang dapat di-retry saat ini.');
+    }
+    setTimeout(() => renderDownloadTab(), 500);
+  });
+}
+
+// Handler untuk membersihkan entry yang sudah selesai (success)
+function handleClearDone() {
+  chrome.storage.local.get(null, function (data) {
+    const doneKeys = Object.keys(data)
+      .filter(k => k.startsWith('tabdownload_') && data[k].status === 'success');
+    if (doneKeys.length === 0) {
+      alert('Tidak ada item yang sudah selesai untuk dibersihkan.');
+      return;
+    }
+    chrome.storage.local.remove(doneKeys, () => renderDownloadTab());
+  });
+}
+
 function resetDownloadProgress(callback) {
   chrome.storage.local.get(null, function (data) {
     let keysToDelete = [];
@@ -911,6 +989,10 @@ tabButtons.forEach(button => {
     saveUserPrefs();
   });
 });
+
+// Tombol Retry Semua & Bersihkan Selesai di tab Download
+document.getElementById('retry-all-btn')?.addEventListener('click', handleRetryAll);
+document.getElementById('clear-done-btn')?.addEventListener('click', handleClearDone);
 
 setupSelectAll('select-all-tahunan', 'tahunan');
 setupSelectAll('select-all-bulanan', 'bulanan');
@@ -1741,7 +1823,7 @@ function saveUserPrefs() {
     ).map(cb => cb.value);
     const fieldIds = tab === 'tahunan'
       ? ['periode-tahunan', 'desa-tahunan', 'rw-tahunan', 'sasaran-tahunan', 'jenis-laporan-tahunan', 'close-delay-tahunan']
-      : ['periode-bulanan', 'tahun', 'faskes-bulanan', 'jenis-laporan-bulanan', 'close-delay-bulanan'];
+      : ['tahun', 'faskes-bulanan', 'jenis-laporan-bulanan', 'close-delay-bulanan'];
     fieldIds.forEach(id => {
       const el = document.getElementById(id);
       if (el) prefs[id] = el.value;
@@ -1776,7 +1858,7 @@ function restoreUserPrefs() {
     ['tahunan', 'bulanan'].forEach(tab => {
       const fieldIds = tab === 'tahunan'
         ? ['periode-tahunan', 'desa-tahunan', 'rw-tahunan', 'sasaran-tahunan', 'jenis-laporan-tahunan', 'close-delay-tahunan']
-        : ['periode-bulanan', 'tahun', 'faskes-bulanan', 'jenis-laporan-bulanan', 'close-delay-bulanan'];
+        : ['tahun', 'faskes-bulanan', 'jenis-laporan-bulanan', 'close-delay-bulanan'];
       fieldIds.forEach(id => {
         const el = document.getElementById(id);
         if (el && prefs[id] !== undefined) el.value = prefs[id];

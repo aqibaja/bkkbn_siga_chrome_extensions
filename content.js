@@ -347,10 +347,26 @@
 
   const isTahunan = storage.periode && /^\d{4}$/.test(storage.periode);
 
-  // Pilih Periode
+  // Untuk mode BULANAN: pilih TAHUN terlebih dahulu sebelum memilih BULAN/PERIODE.
+  // Alasan: pada beberapa halaman SIGA, memilih Tahun menyebabkan dropdown Bulan direset ke
+  // bulan saat ini (default). Dengan memilih Tahun lebih dulu, pemilihan Bulan di bawah tidak
+  // terpengaruh reset tersebut.
+  if (!isTahunan && tahun) {
+    const tahunDropdownFirst = await waitForDropdown("Tahun", 1);
+    if (tahunDropdownFirst) {
+      const r = await bukaDanPilihPadaDropdown(tahunDropdownFirst, tahun, url, kota, currentIndex, downloadQueue);
+      if (r === false) return;
+    } else {
+      console.error('❌ Dropdown Tahun tidak ditemukan (timeout)');
+    }
+    await wait(1000);
+  }
+
+  // Pilih Periode (tahun untuk tahunan, bulan untuk bulanan)
   const periodeDropdown = await waitForDropdown("Periode", 0);
   if (periodeDropdown && periode) {
-    await bukaDanPilihPadaDropdown(periodeDropdown, periode, url, kota, currentIndex, downloadQueue);
+    const rPeriode = await bukaDanPilihPadaDropdown(periodeDropdown, periode, url, kota, currentIndex, downloadQueue);
+    if (rPeriode === false) return;
   } else if (periode) {
     console.error('❌ Dropdown Periode tidak ditemukan (timeout)');
     // Retry sekali dengan refresh jika ini percobaan pertama untuk kota ini
@@ -377,12 +393,16 @@
     }
   }
 
-  // Pilih Tahun (jika ada, misal di mode bulanan)
+  // Pilih Tahun (hanya untuk tahunan — mode bulanan sudah dipilih sebelum Periode di atas)
   await wait(1000);
-  if (tahun) {
+  if (isTahunan && tahun) {
     const tahunDropdown = await waitForDropdown("Tahun", 1);
-    if (tahunDropdown) await bukaDanPilihPadaDropdown(tahunDropdown, tahun, url, kota, currentIndex, downloadQueue);
-    else console.error('❌ Dropdown Tahun tidak ditemukan (timeout)');
+    if (tahunDropdown) {
+      const r = await bukaDanPilihPadaDropdown(tahunDropdown, tahun, url, kota, currentIndex, downloadQueue);
+      if (r === false) return;
+    } else {
+      console.error('❌ Dropdown Tahun tidak ditemukan (timeout)');
+    }
   }
 
   // Pilih Kota/Kab
