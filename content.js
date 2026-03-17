@@ -592,16 +592,20 @@
       const finalHash = getUrlHash(url);
       console.log("⏳ Menunggu download selesai sebelum menutup tab...");
 
-      // Tunggu lebih lama untuk memastikan file benar-benar terdownload (15 detik)
-      setTimeout(async () => {
-        const { key, existing: finalData } = await getKeyAndExisting(finalHash, downloadQueue, storage?.progressKey);
-        if (finalData && finalData.status === 'success') {
-          console.log("🎉 Semua proses selesai (SUCCESS) - menutup tab otomatis dalam 3 detik...");
-          setTimeout(() => chrome.runtime.sendMessage({ action: 'closeTab' }), 3000);
-        } else {
-          console.log("🚫 Proses selesai namun status bukan success (", finalData ? finalData.status : 'unknown', ") - tab dibiarkan terbuka untuk inspeksi.");
-        }
-      }, 10000); // Tunggu 10 detik untuk memastikan download selesai
+      // Tunggu sesuai setting closeDelay (default 10 detik) sebelum menutup tab
+      chrome.storage.local.get('closeDelay', (res) => {
+        const waitMs = ((res.closeDelay || 10) * 1000);
+        console.log(`⏳ Menunggu ${res.closeDelay || 10} detik sebelum menutup tab...`);
+        setTimeout(async () => {
+          const { key, existing: finalData } = await getKeyAndExisting(finalHash, downloadQueue, storage?.progressKey);
+          if (finalData && finalData.status === 'success') {
+            console.log("🎉 Semua proses selesai (SUCCESS) - menutup tab otomatis dalam 3 detik...");
+            setTimeout(() => chrome.runtime.sendMessage({ action: 'closeTab' }), 3000);
+          } else {
+            console.log("🚫 Proses selesai namun status bukan success (", finalData ? finalData.status : 'unknown', ") - tab dibiarkan terbuka untuk inspeksi.");
+          }
+        }, waitMs);
+      });
     }
   } catch (e) {
     await markFail(getUrlHash(url), url, kota, downloadQueue, currentIndex, `Error akhir: ${e.message}`);

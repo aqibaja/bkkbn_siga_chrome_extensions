@@ -127,6 +127,17 @@
               <option value="detail">Detail</option>
             </select>
           </div>
+          <div class="form-group">
+            <div style="font-size:13px;">
+              <input type="checkbox" id="enable-close-delay-tahunan">
+              <label for="enable-close-delay-tahunan">Tambah waktu tunggu sebelum tutup tab</label>
+            </div>
+            <div id="close-delay-panel-tahunan" style="display:none;margin-top:8px;">
+              <label for="close-delay-tahunan">Durasi (detik):</label>
+              <input type="number" id="close-delay-tahunan" min="5" max="300" value="10" style="width:80px;margin-left:8px;">
+              <div style="font-size:11px;color:#888;margin-top:3px;">Tambah jika server lambat. Default: 10 detik.</div>
+            </div>
+          </div>
           <button type="submit" class="btn-primary">Jalankan</button>
         </form>
       </div>
@@ -212,6 +223,17 @@
               <option value="rekap">Rekap</option>
               <option value="detail">Detail</option>
             </select>
+          </div>
+          <div class="form-group">
+            <div style="font-size:13px;">
+              <input type="checkbox" id="enable-close-delay-bulanan">
+              <label for="enable-close-delay-bulanan">Tambah waktu tunggu sebelum tutup tab</label>
+            </div>
+            <div id="close-delay-panel-bulanan" style="display:none;margin-top:8px;">
+              <label for="close-delay-bulanan">Durasi (detik):</label>
+              <input type="number" id="close-delay-bulanan" min="5" max="300" value="10" style="width:80px;margin-left:8px;">
+              <div style="font-size:11px;color:#888;margin-top:3px;">Tambah jika server lambat. Default: 10 detik.</div>
+            </div>
           </div>
           <button type="submit" class="btn-primary">Jalankan</button>
         </form>

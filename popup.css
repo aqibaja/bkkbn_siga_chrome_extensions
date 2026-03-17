@@ -204,6 +204,7 @@ h3 {
     gap: 8px;
     padding: 12px;
     font-size: 13px;
+    user-select: none;
 }
 
 .checkbox-item {

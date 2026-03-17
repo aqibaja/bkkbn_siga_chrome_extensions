@@ -78,7 +78,7 @@ async function loadWilayahData() {
 }
 // Panggil saat popup dibuka
 loadWilayahData();
-loadUrlData();
+loadUrlData().then(() => restoreUserPrefs());
 
 // Data kota
 const cities = [
@@ -156,6 +156,7 @@ function renderCheckboxes(containerId, tabName) {
     checkbox.addEventListener('change', () => {
       updateKecamatanDropdown(tabName);
       handleDisableInputs(tabName);
+      saveUserPrefs();
     });
   });
 
@@ -238,7 +239,7 @@ function renderKecamatanCheckboxes(tabName, kabId) {
     item.appendChild(cb);
     item.appendChild(lbl);
     container.appendChild(item);
-    cb.addEventListener('change', () => onKecamatanSelectionChange(tabName, kabId));
+    cb.addEventListener('change', () => { onKecamatanSelectionChange(tabName, kabId); saveUserPrefs(); });
   });
   // Pasang tombol Pilih Semua / Reset kecamatan
   const selectAllBtn = document.getElementById(`select-all-kecamatan-${tabName}`);
@@ -331,7 +332,7 @@ function renderListDesaFaskes(tabName) {
   if (Array.isArray(wilayahData)) {
     const kabNum = Number(kabId);
     selectedKec.forEach(kec => {
-      const kecName = (kec.split('-')[1] || '').trim();
+      const kecName = (kec.split(' - ')[1] || '').trim();
       wilayahData
         .filter(entry => {
           const kodeKabObj = entry['KODE KABUPATEN'];
@@ -367,7 +368,7 @@ function renderDesaDropdown(tabName, cityId, kecamatanValue) {
   // Hapus dropdown desa/faskes lama jika ada
   removeDesaDropdown(kecamatanContainer);
   if (!kecamatanValue) return;
-  const kecName = (kecamatanValue.split('-')[1] || '').trim();
+  const kecName = (kecamatanValue.split(' - ')[1] || '').trim();
   let desaList = [];
   if (Array.isArray(wilayahData)) {
     const kabNum = Number(cityId);
@@ -907,6 +908,7 @@ tabButtons.forEach(button => {
 
     // Jika tab download diklik, render progress
     if (tabName === 'download') renderDownloadTab();
+    saveUserPrefs();
   });
 });
 
@@ -949,6 +951,13 @@ function setupFormSubmit(formId, tabName) {
       }
 
       const periode = document.getElementById(`periode-${tabName}`).value;
+
+      // Validasi: bulan wajib dipilih untuk tab bulanan
+      if (tabName === 'bulanan' && !periode) {
+        alert('⚠️ Pilih bulan terlebih dahulu sebelum menjalankan download!');
+        document.getElementById('periode-bulanan').focus();
+        return;
+      }
       const kecamatan = document.getElementById(`kecamatan-${tabName}`).value;
       const jenisLaporan = document.getElementById(`jenis-laporan-${tabName}`).value;
 
@@ -1390,6 +1399,7 @@ function syncTabelToUrl(tabName) {
     counter.textContent = `${urls.length} dari ${total} tabel dipilih`;
     counter.style.color = urls.length === 0 ? '#a00' : '#555';
   }
+  saveUserPrefs();
 }
 
 /**
@@ -1461,9 +1471,72 @@ function renderTabelSelector(tabName, submenuId) {
     };
   }
 
+  // Aktifkan drag-to-select
+  setupDragSelect(checkboxesDiv, tabName);
+
   // Kosongkan textarea saat checklist pertama kali muncul (agar user mulai dari kosong)
   textarea.value = '';
   updateUrlCount(tabName);
+}
+
+/**
+ * Drag-to-select: tahan klik dan geser untuk select/deselect banyak checkbox sekaligus.
+ * Klik biasa tetap bekerja normal.
+ */
+function setupDragSelect(container, tabName) {
+  let isDragging = false;
+  let dragCheckState = null;
+  let startCb = null;
+
+  container.addEventListener('mousedown', e => {
+    const item = e.target.closest('.checkbox-item');
+    if (!item) return;
+    const cb = item.querySelector('input[type="checkbox"]');
+    if (!cb) return;
+    startCb = cb;
+    isDragging = false;
+    dragCheckState = !cb.checked;
+  });
+
+  container.addEventListener('mousemove', e => {
+    if (!startCb || !(e.buttons & 1)) { startCb = null; return; }
+    const item = e.target.closest('.checkbox-item');
+    if (!item) return;
+    const cb = item.querySelector('input[type="checkbox"]');
+    if (!cb) return;
+
+    if (!isDragging) {
+      isDragging = true;
+      // Terapkan ke checkbox awal
+      if (startCb.checked !== dragCheckState) {
+        startCb.checked = dragCheckState;
+        syncTabelToUrl(tabName);
+      }
+    }
+
+    if (cb !== startCb && cb.checked !== dragCheckState) {
+      cb.checked = dragCheckState;
+      syncTabelToUrl(tabName);
+    }
+    e.preventDefault();
+  });
+
+  // Capture phase: cegah toggle checkbox jika ini hasil drag, bukan klik
+  container.addEventListener('click', e => {
+    if (isDragging) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    isDragging = false;
+    startCb = null;
+    dragCheckState = null;
+  }, true);
+
+  document.addEventListener('mouseup', () => {
+    isDragging = false;
+    startCb = null;
+    dragCheckState = null;
+  });
 }
 
 function applyFieldVisibility(reportId) {
@@ -1599,11 +1672,13 @@ document.querySelectorAll('.menu-item[data-menu]').forEach(btn => {
         applyFieldVisibility(sub.id);
 
         showScreen(formScreen);
+        saveUserPrefs();
       });
       submenuList.appendChild(subBtn);
     });
 
     showScreen(submenuScreen);
+    saveUserPrefs();
   });
 });
 
@@ -1611,13 +1686,204 @@ document.querySelectorAll('.menu-item[data-menu]').forEach(btn => {
 document.getElementById('back-to-menu').addEventListener('click', () => {
   activeMenuId = null;
   showScreen(menuScreen);
+  saveUserPrefs();
 });
 
 // Back: form → submenu
 document.getElementById('back-to-submenu').addEventListener('click', () => {
   activeSubmenuId = null;
   showScreen(submenuScreen);
+  saveUserPrefs();
 });
+
+// Listener untuk simpan perubahan input/select pada form
+['tahunan', 'bulanan'].forEach(tab => {
+  ['input', 'change'].forEach(evt => {
+    document.getElementById(`${tab}-form`)?.addEventListener(evt, saveUserPrefs);
+  });
+});
+
+// Toggle close-delay panel
+['tahunan', 'bulanan'].forEach(tab => {
+  const toggle = document.getElementById(`enable-close-delay-${tab}`);
+  const panel = document.getElementById(`close-delay-panel-${tab}`);
+  if (toggle && panel) {
+    toggle.addEventListener('change', () => {
+      panel.style.display = toggle.checked ? 'block' : 'none';
+      saveUserPrefs();
+    });
+  }
+});
+
+// ──────────────────────────────────────────────────────────
+// USER PREFERENCES — Simpan & Restore pilihan user
+// ──────────────────────────────────────────────────────────
+
+const PREFS_KEY = 'userPrefs';
+
+function saveUserPrefs() {
+  const prefs = {
+    activeMenuId,
+    activeSubmenuId,
+    activeScreen: formScreen.style.display !== 'none' ? 'form'
+                : submenuScreen.style.display !== 'none' ? 'submenu' : 'menu',
+    activeTab: document.querySelector('.tab-button.active')?.getAttribute('data-tab') || 'tahunan',
+  };
+  ['tahunan', 'bulanan'].forEach(tab => {
+    prefs[`cities_${tab}`] = Array.from(
+      document.querySelectorAll(`#cities-${tab} input[type="checkbox"]:checked`)
+    ).map(cb => cb.value);
+    prefs[`kecamatan_${tab}`] = Array.from(
+      document.querySelectorAll(`#kecamatan-checkboxes-${tab} input[type="checkbox"]:checked`)
+    ).map(cb => cb.value);
+    prefs[`tabel_${tab}`] = Array.from(
+      document.querySelectorAll(`#tabel-checkboxes-${tab} input[type="checkbox"]:checked`)
+    ).map(cb => cb.value);
+    const fieldIds = tab === 'tahunan'
+      ? ['periode-tahunan', 'desa-tahunan', 'rw-tahunan', 'sasaran-tahunan', 'jenis-laporan-tahunan', 'close-delay-tahunan']
+      : ['periode-bulanan', 'tahun', 'faskes-bulanan', 'jenis-laporan-bulanan', 'close-delay-bulanan'];
+    fieldIds.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) prefs[id] = el.value;
+    });
+    const cbOptionIds = tab === 'tahunan'
+      ? ['all-desa-tahunan', 'enable-close-delay-tahunan']
+      : ['all-faskes-bulanan', 'enable-close-delay-bulanan'];
+    cbOptionIds.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) prefs[id] = el.checked;
+    });
+  });
+  // Simpan closeDelay sebagai key terpisah agar bisa dibaca content.js
+  const activeCloseDelay = (() => {
+    const activeTab = prefs.activeTab || 'tahunan';
+    const enableId = activeTab === 'bulanan' ? 'enable-close-delay-bulanan' : 'enable-close-delay-tahunan';
+    const delayId = activeTab === 'bulanan' ? 'close-delay-bulanan' : 'close-delay-tahunan';
+    const enabled = document.getElementById(enableId)?.checked;
+    if (!enabled) return 10;
+    const el = document.getElementById(delayId);
+    return el ? parseInt(el.value, 10) || 10 : 10;
+  })();
+  chrome.storage.local.set({ [PREFS_KEY]: prefs, closeDelay: activeCloseDelay });
+}
+
+function restoreUserPrefs() {
+  chrome.storage.local.get(PREFS_KEY, data => {
+    const prefs = data[PREFS_KEY];
+    if (!prefs) return;
+
+    // Restore simple fields & checkboxes untuk kedua tab
+    ['tahunan', 'bulanan'].forEach(tab => {
+      const fieldIds = tab === 'tahunan'
+        ? ['periode-tahunan', 'desa-tahunan', 'rw-tahunan', 'sasaran-tahunan', 'jenis-laporan-tahunan', 'close-delay-tahunan']
+        : ['periode-bulanan', 'tahun', 'faskes-bulanan', 'jenis-laporan-bulanan', 'close-delay-bulanan'];
+      fieldIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (el && prefs[id] !== undefined) el.value = prefs[id];
+      });
+      const cbOptionIds = tab === 'tahunan'
+        ? ['all-desa-tahunan', 'enable-close-delay-tahunan']
+        : ['all-faskes-bulanan', 'enable-close-delay-bulanan'];
+      cbOptionIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (el && prefs[id] !== undefined) {
+          el.checked = prefs[id];
+          // Sync panel visibility
+          if (id.startsWith('enable-close-delay-')) {
+            const t = id.replace('enable-close-delay-', '');
+            const panel = document.getElementById(`close-delay-panel-${t}`);
+            if (panel) panel.style.display = prefs[id] ? 'block' : 'none';
+          }
+        }
+      });
+      // Restore kab/kota
+      if (prefs[`cities_${tab}`]?.length) {
+        prefs[`cities_${tab}`].forEach(val => {
+          const cb = document.querySelector(`#cities-${tab} input[value="${val}"]`);
+          if (cb) cb.checked = true;
+        });
+        updateKecamatanDropdown(tab);
+      }
+    });
+
+    // Navigasi
+    if (!prefs.activeMenuId || prefs.activeScreen === 'menu') return;
+
+    const menu = menuConfig[prefs.activeMenuId];
+    if (!menu) return;
+
+    activeMenuId = prefs.activeMenuId;
+
+    // Rebuild submenu HTML (supaya tombol kembali berfungsi)
+    const submenuTitle = document.getElementById('submenu-title');
+    const submenuList = document.getElementById('submenu-list');
+    if (submenuTitle) submenuTitle.textContent = menu.label;
+    if (submenuList) {
+      submenuList.innerHTML = '';
+      menu.submenus.forEach(sub => {
+        const subBtn = document.createElement('button');
+        subBtn.className = 'menu-item';
+        subBtn.innerHTML = `<span class="menu-item-label">${sub.label}</span><span class="menu-item-chevron">›</span>`;
+        subBtn.addEventListener('click', () => {
+          activeSubmenuId = sub.id;
+          const breadcrumb = document.getElementById('breadcrumb-label');
+          if (breadcrumb) breadcrumb.textContent = `${menu.label}  ›  ${sub.label}`;
+          applyFieldVisibility(sub.id);
+          showScreen(formScreen);
+          saveUserPrefs();
+        });
+        submenuList.appendChild(subBtn);
+      });
+    }
+
+    if (prefs.activeScreen === 'submenu') {
+      showScreen(submenuScreen);
+      return;
+    }
+
+    if (prefs.activeScreen !== 'form' || !prefs.activeSubmenuId) return;
+
+    activeSubmenuId = prefs.activeSubmenuId;
+    const sub = menu.submenus.find(s => s.id === activeSubmenuId);
+    if (!sub) return;
+
+    const breadcrumb = document.getElementById('breadcrumb-label');
+    if (breadcrumb) breadcrumb.textContent = `${menu.label}  ›  ${sub.label}`;
+    applyFieldVisibility(activeSubmenuId);
+    showScreen(formScreen);
+
+    // Restore active tab
+    if (prefs.activeTab) {
+      const allTabBtns = document.querySelectorAll('.tab-button');
+      const allTabContents = document.querySelectorAll('.tab-content');
+      allTabBtns.forEach(b => b.classList.remove('active'));
+      allTabContents.forEach(c => c.classList.remove('active'));
+      const targetBtn = document.querySelector(`.tab-button[data-tab="${prefs.activeTab}"]`);
+      const targetContent = document.getElementById(`${prefs.activeTab}-content`);
+      if (targetBtn) targetBtn.classList.add('active');
+      if (targetContent) targetContent.classList.add('active');
+    }
+
+    // Restore kecamatan & tabel (perlu delay karena dirender async)
+    setTimeout(() => {
+      ['tahunan', 'bulanan'].forEach(tab => {
+        if (prefs[`kecamatan_${tab}`]?.length) {
+          document.querySelectorAll(`#kecamatan-checkboxes-${tab} input[type="checkbox"]`).forEach(cb => {
+            if (prefs[`kecamatan_${tab}`].includes(cb.value)) cb.checked = true;
+          });
+          const kecInput = document.getElementById(`kecamatan-${tab}`);
+          if (kecInput) kecInput.value = prefs[`kecamatan_${tab}`][0] || '';
+        }
+        if (prefs[`tabel_${tab}`]?.length) {
+          document.querySelectorAll(`#tabel-checkboxes-${tab} input[type="checkbox"]`).forEach(cb => {
+            if (prefs[`tabel_${tab}`].includes(cb.value)) cb.checked = true;
+          });
+          syncTabelToUrl(tab);
+        }
+      });
+    }, 100);
+  });
+}
 
 // On load: show menu screen
 showScreen(menuScreen);
