@@ -1726,7 +1726,7 @@ function saveUserPrefs() {
     activeMenuId,
     activeSubmenuId,
     activeScreen: formScreen.style.display !== 'none' ? 'form'
-                : submenuScreen.style.display !== 'none' ? 'submenu' : 'menu',
+      : submenuScreen.style.display !== 'none' ? 'submenu' : 'menu',
     activeTab: document.querySelector('.tab-button.active')?.getAttribute('data-tab') || 'tahunan',
   };
   ['tahunan', 'bulanan'].forEach(tab => {
