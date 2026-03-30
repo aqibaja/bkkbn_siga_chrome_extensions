@@ -218,94 +218,69 @@
   // Fitur lama: Handle popup Rekap/Detail
   async function handlePopup(reportType, url, kota, downloadQueue, currentIndex) {
     let tries = 0;
-    const maxTries = 5;
+    const maxTries = 30;
+    const reportTypeNorm = (reportType || '').toString().trim().toLowerCase();
+
     while (tries < maxTries) {
-      const popUp = document.querySelector('.swal2-title');
-      if (popUp) {
-        console.log("✅ Popup check attempt:", tries + 1);
-        const rekapButton = [...document.querySelectorAll("button")].find(btn => btn.textContent.includes("Rekap"));
-        const detailButton = [...document.querySelectorAll("button")].find(btn => btn.textContent.includes("Detail"));
-        console.log("🔍 Found buttons:", {
-          rekap: !!rekapButton,
-          detail: !!detailButton
-        });
-        console.log("🔍 Report type requested:", reportType);
-        console.log(reportType.toLowerCase() === "rekap" && rekapButton);
+      const popUp = document.querySelector('.swal2-title') || document.querySelector('.modal-title') || document.querySelector('h2, h3, h4');
+      const rekapButton = [...document.querySelectorAll("button")].find(btn => /rekap/i.test(btn.textContent));
+      const detailButton = [...document.querySelectorAll("button")].find(btn => /detail/i.test(btn.textContent));
+
+      console.log("✅ Popup check attempt:", tries + 1, { popUpExists: !!popUp, reportType: reportTypeNorm, rekap: !!rekapButton, detail: !!detailButton });
+
+      if ((reportTypeNorm === 'rekap' && rekapButton) || (reportTypeNorm === 'detail' && detailButton)) {
+        const target = reportTypeNorm === 'rekap' ? rekapButton : detailButton;
+        target.click();
+        console.log(`✅ Klik tombol ${reportTypeNorm} (direct)`);
+
         const hash = getUrlHash(url);
-        if (reportType.toLowerCase() === "rekap" && rekapButton) {
-          rekapButton.click();
-          console.log("✅ Klik tombol Rekap");
-          // Simpan status download untuk tab Download Progress
-          (async () => {
-            const { key, existing: fromStorage } = await getKeyAndExisting(hash, downloadQueue, storage?.progressKey);
-            const existing = fromStorage || {
-              url: url,
-              status: "downloading",
-              totalFiles: downloadQueue.length, // total kota/file untuk URL ini
-              filesCompleted: 0,
-              fileAkhir: ""
-            };
-            // Update progress
-            existing.filesCompleted = currentIndex + 1;
-            existing.fileAkhir = kota || "Provinsi";
-            if (currentIndex >= downloadQueue.length - 1) existing.status = "success";
-            chrome.storage.local.set({ [key]: existing }, () => {
-              chrome.runtime.sendMessage({ action: "refresh_download_status" });
-            });
-          })();
-        } else if (reportType.toLowerCase() === "detail" && detailButton) {
-          detailButton.click();
-          console.log("✅ Klik tombol Detail");
-          // Simpan status download untuk tab Download Progress
-          (async () => {
-            const { key, existing: fromStorage } = await getKeyAndExisting(hash, downloadQueue, storage?.progressKey);
-            const existing = fromStorage || {
-              url: url,
-              status: "downloading",
-              totalFiles: downloadQueue.length, // total kota/file untuk URL ini
-              filesCompleted: 0,
-              fileAkhir: ""
-            };
-            // Update progress
-            existing.filesCompleted = currentIndex + 1;
-            existing.fileAkhir = kota || "Provinsi";
-            if (currentIndex >= downloadQueue.length - 1) existing.status = "success";
-            chrome.storage.local.set({ [key]: existing }, () => {
-              chrome.runtime.sendMessage({ action: "refresh_download_status" });
-            });
-          })();
-        } else {
-          alert("❌ Jenis laporan tidak valid atau tombol Rekap/Detail tidak ditemukan. Proses dibatalkan.");
-          console.error("❌ Tombol Rekap atau Detail tidak ditemukan");
-          // Simpan status download untuk tab Download Progress
-          (async () => {
-            const { key, existing: fromStorage } = await getKeyAndExisting(hash, downloadQueue, storage?.progressKey);
-            const existing = fromStorage || {
-              url: url,
-              status: "downloading",
-              totalFiles: downloadQueue.length, // total kota/file untuk URL ini
-              filesCompleted: 0,
-              fileAkhir: ""
-            };
-            // Update progress
-            existing.filesCompleted = currentIndex + 1;
-            existing.fileAkhir = kota || "Provinsi";
-            existing.status = "fail"; // immediate fail
-            chrome.storage.local.set({ [key]: existing }, () => {
-              chrome.runtime.sendMessage({ action: "refresh_download_status" });
-            });
-          })();
-        }
+        const chosen = reportTypeNorm === 'rekap' ? 'rekap' : 'detail';
+        await updateProgressOnSelection(hash, url, kota, downloadQueue, currentIndex, chosen);
         return;
       }
+
+      // Jika tombol eksisting lain (race), selesaikan dengan fallback paling dekat
+      if (!popUp && tries < 5) {
+        await wait(400);
+        tries++;
+        continue;
+      }
+
+      if (popUp && (rekapButton || detailButton)) {
+        const chosen = reportTypeNorm === 'rekap' ? rekapButton : detailButton;
+        if (chosen) {
+          chosen.click();
+          console.log(`✅ Klik tombol ${reportTypeNorm} (pop-up mode)`);
+          const hash = getUrlHash(url);
+          await updateProgressOnSelection(hash, url, kota, downloadQueue, currentIndex, reportTypeNorm);
+          return;
+        }
+      }
+
       await wait(500);
       tries++;
     }
-    if (tries >= maxTries) {
-      alert("⚠️ Popup tidak muncul setelah menunggu. Proses dibatalkan.");
-      console.warn("⚠️ Popup tidak muncul setelah menunggu");
-      await markFail(getUrlHash(url), url, kota, downloadQueue, currentIndex, 'Popup tidak muncul');
-    }
+
+    alert("⚠️ Popup atau tombol Rekap/Detail tidak muncul setelah menunggu. Proses dibatalkan.");
+    console.warn("⚠️ Popup tidak muncul setelah menunggu");
+    await markFail(getUrlHash(url), url, kota, downloadQueue, currentIndex, 'Popup tidak muncul atau tombol rekap/detail tidak bisa diklik');
+  }
+
+  async function updateProgressOnSelection(hash, url, kota, downloadQueue, currentIndex, reportType) {
+    const { key, existing: fromStorage } = await getKeyAndExisting(hash, downloadQueue, storage?.progressKey);
+    const existing = fromStorage || {
+      url: url,
+      status: "downloading",
+      totalFiles: downloadQueue.length,
+      filesCompleted: 0,
+      fileAkhir: ""
+    };
+    existing.filesCompleted = currentIndex + 1;
+    existing.fileAkhir = kota || "Provinsi";
+    if (currentIndex >= downloadQueue.length - 1) existing.status = "success";
+    chrome.storage.local.set({ [key]: existing }, () => {
+      chrome.runtime.sendMessage({ action: "refresh_download_status" });
+    });
   }
 
   // Automation: Ambil data dari storage untuk tab ini
@@ -515,28 +490,37 @@
     console.log("✅ Klik tombol Cetak Excel");
     await wait(400);
 
+    // Helper for numeric code extraction
+    const extractNumericCode = (value) => {
+      if (!value) return '';
+      const m = value.toString().trim().match(/^(\d+)/);
+      return m ? m[1] : '';
+    };
+
     // Try to detect blob URL created by the page and register rename payload per-blob
     (function tryRegisterBlob() {
+      const kab = (kota || '').toString().replace(/^\d+\s*-\s*/, '').trim();
+      const kec = storage.kecamatan || '';
+      const desa = (downloadQueue[currentIndex] && downloadQueue[currentIndex].desa) || storage.desa || '';
       const payload = {
         periode: storage.periode,
         tahun: storage.tahun,
-        kab: (kota || '').toString().replace(/^\d+\s*-\s*/, '').trim(),
-        kec: storage.kecamatan || '',
+        kab,
+        kabCode: storage.kabCode || extractNumericCode(kota),
+        jenisLaporan: storage.jenisLaporan || '',
+        kec,
+        kecCode: storage.kecCode || extractNumericCode(kec),
         faskes: storage.faskes || '',
-        desa: (downloadQueue[currentIndex] && downloadQueue[currentIndex].desa) || storage.desa || '',
-        rw: storage.rw || ''
+        desa,
+        desaCode: storage.desaCode || extractNumericCode(desa),
+        rw: storage.rw || '',
+        menu: storage.menu || '',
+        submenu: storage.submenu || '',
+        sasaran: storage.sasaran || (downloadQueue[currentIndex] && downloadQueue[currentIndex].sasaran) || ''
       };
 
-      // Broaden detection: watch for anchors/iframes/sources with blob: in href/src, and wait longer
-      const selectors = ['a[href^="blob:"]', 'a[download][href^="blob:"]', 'iframe[src^="blob:"]', 'source[src^="blob:"]', 'a[href*="blob:"]'];
-      const timeoutMs = 10000;
-
-      // Try immediate scan first
-      const scanAndRegister = () => {
-        const nodes = document.querySelectorAll(selectors.join(','));
-        const blobs = [...nodes].map(el => el.href || el.src).filter(Boolean);
-        if (blobs.length > 0) {
-          const blobUrl = blobs[blobs.length - 1];
+        const registerBlobUrl = (blobUrl) => {
+          if (!blobUrl || typeof blobUrl !== 'string' || !blobUrl.startsWith('blob:')) return;
           try {
             chrome.runtime.sendMessage({ action: 'registerBlobRename', blobUrl, payload }, (resp) => {
               console.log('registerBlobRename resp', resp, 'for', blobUrl, payload.desa);
@@ -544,33 +528,70 @@
           } catch (e) {
             console.warn('Failed to register blob rename', e);
           }
-          return true;
-        }
-        return false;
-      };
+        };
 
-      if (scanAndRegister()) return;
+        const onMessage = (event) => {
+          if (event.source !== window || !event.data || event.data.type !== 'SIGA_EXCEL_DOWNLOADER_BLOB') return;
+          registerBlobUrl(event.data.blobUrl);
+        };
 
-      // Otherwise observe DOM mutations for dynamically injected blob links
-      const observer = new MutationObserver((mutations) => {
+        window.addEventListener('message', onMessage);
+
+        const selectors = ['a[href^="blob:"]', 'a[download][href^="blob:"]', 'iframe[src^="blob:"]', 'source[src^="blob:"]', 'a[href*="blob:"]'];
+        const timeoutMs = 15000;
+
+        const scanAndRegister = () => {
+          const nodes = document.querySelectorAll(selectors.join(','));
+          const blobs = [...nodes].map(el => el.href || el.src).filter(Boolean);
+          if (blobs.length > 0) {
+            const blobUrl = blobs[blobs.length - 1];
+            registerBlobUrl(blobUrl);
+            return true;
+          }
+          return false;
+        };
+
+        const injectBlobHook = () => {
+          try {
+            const script = document.createElement('script');
+            script.src = chrome.runtime.getURL('injected_blob_hook.js');
+            script.onload = () => script.remove();
+            script.onerror = () => {
+              console.warn('Failed to inject blob hook script (CSP)');
+              script.remove();
+            };
+            (document.head || document.documentElement).appendChild(script);
+          } catch (e) {
+            console.warn('Failed to inject blob hook (exception)', e);
+          }
+        };
+
+        injectBlobHook();
+
         if (scanAndRegister()) {
-          observer.disconnect();
+          window.removeEventListener('message', onMessage);
+          return;
         }
-      });
-      observer.observe(document.body, { childList: true, subtree: true });
 
-      // Stop observing after timeout
-      setTimeout(() => {
-        try { observer.disconnect(); } catch (e) { }
-      }, timeoutMs);
-    })();
+        // Otherwise observe DOM mutations for dynamically injected blob links
+        const observer = new MutationObserver(() => {
+          if (scanAndRegister()) {
+            observer.disconnect();
+            window.removeEventListener('message', onMessage);
+          }
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
 
-    await wait(500);
-    if (jenisLaporan) {
-      await handlePopup(jenisLaporan, url, kota, downloadQueue, currentIndex);
-    } else {
-      // Simpan status download untuk tab Download Progress
-      (async () => {
+        // Stop observing after timeout
+        setTimeout(() => {
+          try { observer.disconnect(); } catch (e) { }
+          window.removeEventListener('message', onMessage);
+        }, timeoutMs);
+      })();
+
+      if (jenisLaporan) {
+        await handlePopup(jenisLaporan, url, kota, downloadQueue, currentIndex);
+      } else {
         const hash = getUrlHash(url);
         const { key, existing: fromStorage } = await getKeyAndExisting(hash, downloadQueue, storage?.progressKey);
         const existing = fromStorage || {
@@ -589,9 +610,7 @@
         chrome.storage.local.set({ [key]: existing }, () => {
           chrome.runtime.sendMessage({ action: "refresh_download_status" });
         });
-      })();
-
-    }
+      }
   } else {
     console.error("❌ Tombol Cetak Excel tidak ditemukan");
   }

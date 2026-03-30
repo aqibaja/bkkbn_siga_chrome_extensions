@@ -29,6 +29,16 @@ function parseUrlJson(rawArray) {
   return result;
 }
 
+function detectSasaranFromUrl(url) {
+  if (!url || typeof url !== 'string') return '';
+  const normalized = url.toLowerCase();
+  if (normalized.includes('/#/catindetail') || normalized.includes('/#/catin-') || normalized.includes('/#/catin')) return 'catin';
+  if (normalized.includes('/#/badutadetail') || normalized.includes('/#/baduta-') || normalized.includes('/#/baduta')) return 'baduta';
+  if (normalized.includes('/#/bumil') || normalized.includes('/#/ibuhamil') || normalized.includes('/#/ibu-hamil')) return 'bumil';
+  if (normalized.includes('/#/pascapersalinan') || normalized.includes('/#/pascasalin')) return 'pascapersalin';
+  return '';
+}
+
 async function loadUrlData() {
   try {
     const [resBulanan, resTahunan] = await Promise.all([
@@ -1015,11 +1025,25 @@ setupReset('reset-tahunan', 'tahunan');
 setupReset('reset-bulanan', 'bulanan');
 
 // Form submit handlers
+function extractNumericCode(label) {
+  if (!label) return '';
+  const m = label.toString().trim().match(/^(\d+)/);
+  return m ? m[1] : '';
+}
+
 function setupFormSubmit(formId, tabName) {
   document.getElementById(formId).addEventListener('submit', (e) => {
     e.preventDefault();
 
     try {
+      // Reset rename context queue before run
+      chrome.storage.local.set({
+        renameQueue: [],
+        pendingRenameList: [],
+        renameContext: null,
+        renameEnabled: false
+      });
+
       // Parse URLs - pisahkan dengan newline atau space, lalu filter yang valid
       const urlsRaw = document.getElementById(`urls-${tabName}`).value;
       const urls = urlsRaw
@@ -1041,7 +1065,15 @@ function setupFormSubmit(formId, tabName) {
         return;
       }
       const kecamatan = document.getElementById(`kecamatan-${tabName}`).value;
-      const jenisLaporan = document.getElementById(`jenis-laporan-${tabName}`).value;
+      const jenisLaporanField = document.getElementById(`jenis-laporan-${tabName}`);
+      let jenisLaporan = jenisLaporanField ? jenisLaporanField.value : '';
+
+      if (jenisLaporanField) {
+        const jenisLaporanGroup = jenisLaporanField.closest('.form-group');
+        if (jenisLaporanGroup && jenisLaporanGroup.style.display === 'none') {
+          jenisLaporan = '';
+        }
+      }
 
       const checkboxes = document.querySelectorAll(`#cities-${tabName} input[type="checkbox"]:checked`);
       const selectedCities = Array.from(checkboxes).map(cb => cb.value);
@@ -1061,7 +1093,7 @@ function setupFormSubmit(formId, tabName) {
         // Banyak kab/kota: setiap kab/kota x url = tab terpisah
         selectedCities.forEach(cityId => {
           urls.forEach(url => {
-            queue.push({ kota: cityNameMap[cityId], url });
+            queue.push({ kota: cityNameMap[cityId], url, kabCode: cityId });
           });
         });
       } else if (selectedCities.length === 1 && selectedKecamatan.length > 1 && ((tabName === 'tahunan' && allDesaChecked) || (tabName === 'bulanan' && allFaskesChecked))) {
@@ -1079,7 +1111,7 @@ function setupFormSubmit(formId, tabName) {
           }
           urls.forEach(url => {
             desaItems.forEach(({ desa, kec }) => {
-              queue.push({ kota: cityNameMap[kabId], url, kecamatan: kec, desa });
+              queue.push({ kota: cityNameMap[kabId], url, kecamatan: kec, desa, kabCode: kabId });
             });
           });
         } else {
@@ -1103,7 +1135,7 @@ function setupFormSubmit(formId, tabName) {
         const kabId = selectedCities[0];
         urls.forEach(url => {
           selectedKecamatan.forEach(kec => {
-            queue.push({ kota: cityNameMap[kabId], url, kecamatan: kec });
+            queue.push({ kota: cityNameMap[kabId], url, kecamatan: kec, kabCode: kabId });
           });
         });
       } else if (selectedCities.length === 1 && ((tabName === 'tahunan' && allDesaChecked) || (tabName === 'bulanan' && allFaskesChecked))) {
@@ -1118,7 +1150,7 @@ function setupFormSubmit(formId, tabName) {
           }
           urls.forEach(url => {
             desaList.forEach(desa => {
-              queue.push({ kota: cityNameMap[selectedCities[0]], url, kecamatan, desa });
+              queue.push({ kota: cityNameMap[selectedCities[0]], url, kecamatan, desa, kabCode: selectedCities[0] });
             });
           });
         } else if (tabName === 'bulanan' && allFaskesChecked) {
@@ -1131,7 +1163,7 @@ function setupFormSubmit(formId, tabName) {
           }
           urls.forEach(url => {
             faskesList.forEach(faskes => {
-              queue.push({ kota: cityNameMap[selectedCities[0]], url, kecamatan, faskes });
+              queue.push({ kota: cityNameMap[selectedCities[0]], url, kecamatan, faskes, kabCode: selectedCities[0] });
             });
           });
         }
@@ -1158,6 +1190,12 @@ function setupFormSubmit(formId, tabName) {
         }
       }
 
+      // Tambahkan sasaran/catin/baduta/bumil/pascapersalin untuk setiap URL jika tersedia dari URL
+      queue = queue.map(item => ({
+        ...item,
+        sasaran: item.sasaran || detectSasaranFromUrl(item.url)
+      }));
+
       // Jika mode banyak desa/faskes, kirim ke background satu per tab (bukan satu queue besar)
       // DEBUG LOG: tampilkan queue sebelum dikirim ke background
       console.log('[DEBUG][popup] Queue to background:', queue);
@@ -1167,12 +1205,17 @@ function setupFormSubmit(formId, tabName) {
           switchToDownloadTab();
           // initialize progress entries for the per-item queue so renderDownloadTab can show them
           initializeDownloadProgress(queue).then(keys => {
+            // In multi-item mode, kabCode should derive from item.kota agar 01 menjadi 7401 dalam location prefix
             queue.forEach((item, idx) => {
+              const itemKabCode = item.kabCode || extractNumericCode(item.kota || '') || (selectedCities.length === 1 ? selectedCities[0] : '');
               // Data untuk 1 tab
               const singleQueue = [item];
               const itemKecamatan = item.kecamatan || kecamatan;
+              const kecCode = extractNumericCode(itemKecamatan);
+              const desaCode = extractNumericCode(item.desa || '');
               const dataSingle = {
                 tab: tabName,
+                submenu: activeSubmenuId,
                 periode,
                 kecamatan: itemKecamatan,
                 jenisLaporan,
@@ -1181,21 +1224,30 @@ function setupFormSubmit(formId, tabName) {
                 urls
               };
               let payload = {
+                menu: activeMenuId,
+                submenu: activeSubmenuId,
                 periode,
                 kab: (item.kota || '').toString().replace(/^\d+\s*-\s*/, '').trim(),
-                kec: itemKecamatan
+                kabCode: itemKabCode,
+                kec: itemKecamatan,
+                kecCode,
+                jenisLaporan,
+                desaCode,
+                sasaran: item.sasaran || detectSasaranFromUrl(item.url)
               };
               if (tabName === 'bulanan') {
                 dataSingle.faskes = item.faskes || '';
                 dataSingle.tahun = document.getElementById('tahun').value;
                 payload.tahun = dataSingle.tahun;
                 payload.faskes = item.faskes || '';
+                payload.sasaran = item.sasaran || detectSasaranFromUrl(item.url) || '';
               } else {
                 dataSingle.desa = item.desa || '';
                 dataSingle.rw = document.getElementById('rw-tahunan').value;
                 dataSingle.sasaran = document.getElementById('sasaran-tahunan').value;
                 payload.desa = item.desa || '';
                 payload.rw = dataSingle.rw;
+                payload.sasaran = dataSingle.sasaran || item.sasaran || detectSasaranFromUrl(item.url) || '';
               }
               // attach the generated progress key so the content script can update the correct entry
               dataSingle.progressKey = keys[idx];
@@ -1217,6 +1269,7 @@ function setupFormSubmit(formId, tabName) {
 
       const data = {
         tab: tabName,
+        submenu: activeSubmenuId,
         periode,
         kecamatan,
         jenisLaporan,
@@ -1326,11 +1379,29 @@ function setupFormSubmit(formId, tabName) {
           kab = 'PROVINSI';
         }
 
+        const kabCode = selectedCityIds.length === 1 ? selectedCityIds[0] : '';
+        const kecValue = document.getElementById(`kecamatan-${tabName}`).value;
+        const kecCode = extractNumericCode(kecValue);
+        const desaValue = data.desa || '';
+        const desaCode = extractNumericCode(desaValue);
+
+        const defaultSasaran = data.sasaran || (queue[0] && queue[0].sasaran) || detectSasaranFromUrl((queue[0] && queue[0].url) || '') || '';
+
         const payload = {
+          menu: activeMenuId,
+          submenu: activeSubmenuId,
           periode: document.getElementById(`periode-${tabName}`).value,
           kab: kab,
-          kec: document.getElementById(`kecamatan-${tabName}`).value
+          kabCode: kabCode,
+          kec: kecValue,
+          kecCode,
+          jenisLaporan,
+          desa: data.desa,
+          desaCode,
+          sasaran: defaultSasaran
         };
+
+        data.sasaran = defaultSasaran;
 
         if (tabName === "bulanan") {
           payload.tahun = document.getElementById("tahun")?.value; // ambil input tahun bulanan

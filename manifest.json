@@ -33,6 +33,12 @@
       "run_at": "document_idle"
     }
   ],
+  "web_accessible_resources": [
+    {
+      "resources": ["injected_blob_hook.js"],
+      "matches": ["https://newsiga-siga.bkkbn.go.id/*"]
+    }
+  ],
   "background": {
     "service_worker": "background.js"
   }
