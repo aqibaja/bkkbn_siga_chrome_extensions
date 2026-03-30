@@ -35,8 +35,12 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["injected_blob_hook.js"],
-      "matches": ["https://newsiga-siga.bkkbn.go.id/*"]
+      "resources": [
+        "injected_blob_hook.js"
+      ],
+      "matches": [
+        "https://newsiga-siga.bkkbn.go.id/*"
+      ]
     }
   ],
   "background": {

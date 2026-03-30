@@ -519,98 +519,98 @@
         sasaran: storage.sasaran || (downloadQueue[currentIndex] && downloadQueue[currentIndex].sasaran) || ''
       };
 
-        const registerBlobUrl = (blobUrl) => {
-          if (!blobUrl || typeof blobUrl !== 'string' || !blobUrl.startsWith('blob:')) return;
-          try {
-            chrome.runtime.sendMessage({ action: 'registerBlobRename', blobUrl, payload }, (resp) => {
-              console.log('registerBlobRename resp', resp, 'for', blobUrl, payload.desa);
-            });
-          } catch (e) {
-            console.warn('Failed to register blob rename', e);
-          }
-        };
-
-        const onMessage = (event) => {
-          if (event.source !== window || !event.data || event.data.type !== 'SIGA_EXCEL_DOWNLOADER_BLOB') return;
-          registerBlobUrl(event.data.blobUrl);
-        };
-
-        window.addEventListener('message', onMessage);
-
-        const selectors = ['a[href^="blob:"]', 'a[download][href^="blob:"]', 'iframe[src^="blob:"]', 'source[src^="blob:"]', 'a[href*="blob:"]'];
-        const timeoutMs = 15000;
-
-        const scanAndRegister = () => {
-          const nodes = document.querySelectorAll(selectors.join(','));
-          const blobs = [...nodes].map(el => el.href || el.src).filter(Boolean);
-          if (blobs.length > 0) {
-            const blobUrl = blobs[blobs.length - 1];
-            registerBlobUrl(blobUrl);
-            return true;
-          }
-          return false;
-        };
-
-        const injectBlobHook = () => {
-          try {
-            const script = document.createElement('script');
-            script.src = chrome.runtime.getURL('injected_blob_hook.js');
-            script.onload = () => script.remove();
-            script.onerror = () => {
-              console.warn('Failed to inject blob hook script (CSP)');
-              script.remove();
-            };
-            (document.head || document.documentElement).appendChild(script);
-          } catch (e) {
-            console.warn('Failed to inject blob hook (exception)', e);
-          }
-        };
-
-        injectBlobHook();
-
-        if (scanAndRegister()) {
-          window.removeEventListener('message', onMessage);
-          return;
+      const registerBlobUrl = (blobUrl) => {
+        if (!blobUrl || typeof blobUrl !== 'string' || !blobUrl.startsWith('blob:')) return;
+        try {
+          chrome.runtime.sendMessage({ action: 'registerBlobRename', blobUrl, payload }, (resp) => {
+            console.log('registerBlobRename resp', resp, 'for', blobUrl, payload.desa);
+          });
+        } catch (e) {
+          console.warn('Failed to register blob rename', e);
         }
+      };
 
-        // Otherwise observe DOM mutations for dynamically injected blob links
-        const observer = new MutationObserver(() => {
-          if (scanAndRegister()) {
-            observer.disconnect();
-            window.removeEventListener('message', onMessage);
-          }
-        });
-        observer.observe(document.body, { childList: true, subtree: true });
+      const onMessage = (event) => {
+        if (event.source !== window || !event.data || event.data.type !== 'SIGA_EXCEL_DOWNLOADER_BLOB') return;
+        registerBlobUrl(event.data.blobUrl);
+      };
 
-        // Stop observing after timeout
-        setTimeout(() => {
-          try { observer.disconnect(); } catch (e) { }
-          window.removeEventListener('message', onMessage);
-        }, timeoutMs);
-      })();
+      window.addEventListener('message', onMessage);
 
-      if (jenisLaporan) {
-        await handlePopup(jenisLaporan, url, kota, downloadQueue, currentIndex);
-      } else {
-        const hash = getUrlHash(url);
-        const { key, existing: fromStorage } = await getKeyAndExisting(hash, downloadQueue, storage?.progressKey);
-        const existing = fromStorage || {
-          url: url,
-          status: "downloading",
-          totalFiles: downloadQueue.length, // total kota/file untuk URL ini
-          filesCompleted: 0,
-          fileAkhir: ""
-        };
+      const selectors = ['a[href^="blob:"]', 'a[download][href^="blob:"]', 'iframe[src^="blob:"]', 'source[src^="blob:"]', 'a[href*="blob:"]'];
+      const timeoutMs = 15000;
 
-        // Update progress
-        existing.filesCompleted = currentIndex + 1;
-        existing.fileAkhir = kota || "Provinsi";
-        if (currentIndex >= downloadQueue.length - 1) existing.status = "success";
+      const scanAndRegister = () => {
+        const nodes = document.querySelectorAll(selectors.join(','));
+        const blobs = [...nodes].map(el => el.href || el.src).filter(Boolean);
+        if (blobs.length > 0) {
+          const blobUrl = blobs[blobs.length - 1];
+          registerBlobUrl(blobUrl);
+          return true;
+        }
+        return false;
+      };
 
-        chrome.storage.local.set({ [key]: existing }, () => {
-          chrome.runtime.sendMessage({ action: "refresh_download_status" });
-        });
+      const injectBlobHook = () => {
+        try {
+          const script = document.createElement('script');
+          script.src = chrome.runtime.getURL('injected_blob_hook.js');
+          script.onload = () => script.remove();
+          script.onerror = () => {
+            console.warn('Failed to inject blob hook script (CSP)');
+            script.remove();
+          };
+          (document.head || document.documentElement).appendChild(script);
+        } catch (e) {
+          console.warn('Failed to inject blob hook (exception)', e);
+        }
+      };
+
+      injectBlobHook();
+
+      if (scanAndRegister()) {
+        window.removeEventListener('message', onMessage);
+        return;
       }
+
+      // Otherwise observe DOM mutations for dynamically injected blob links
+      const observer = new MutationObserver(() => {
+        if (scanAndRegister()) {
+          observer.disconnect();
+          window.removeEventListener('message', onMessage);
+        }
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+
+      // Stop observing after timeout
+      setTimeout(() => {
+        try { observer.disconnect(); } catch (e) { }
+        window.removeEventListener('message', onMessage);
+      }, timeoutMs);
+    })();
+
+    if (jenisLaporan) {
+      await handlePopup(jenisLaporan, url, kota, downloadQueue, currentIndex);
+    } else {
+      const hash = getUrlHash(url);
+      const { key, existing: fromStorage } = await getKeyAndExisting(hash, downloadQueue, storage?.progressKey);
+      const existing = fromStorage || {
+        url: url,
+        status: "downloading",
+        totalFiles: downloadQueue.length, // total kota/file untuk URL ini
+        filesCompleted: 0,
+        fileAkhir: ""
+      };
+
+      // Update progress
+      existing.filesCompleted = currentIndex + 1;
+      existing.fileAkhir = kota || "Provinsi";
+      if (currentIndex >= downloadQueue.length - 1) existing.status = "success";
+
+      chrome.storage.local.set({ [key]: existing }, () => {
+        chrome.runtime.sendMessage({ action: "refresh_download_status" });
+      });
+    }
   } else {
     console.error("❌ Tombol Cetak Excel tidak ditemukan");
   }
