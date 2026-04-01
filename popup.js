@@ -1024,6 +1024,171 @@ function setupReset(buttonId, tabName) {
 setupReset('reset-tahunan', 'tahunan');
 setupReset('reset-bulanan', 'bulanan');
 
+// BKB monitoring panel utilities
+function setBkbMonitoringStatus(message) {
+  const el = document.getElementById('monitoring-k0-status');
+  if (el) el.textContent = `Status: ${message}`;
+}
+
+function generateBkbMonitoringOutput(results) {
+  if (!results || results.length === 0) return '';
+
+  const header = ['Kota/Kabupaten', 'Total', 'Update', 'Belum'];
+  const lines = results.map(item => {
+    const total = item.total != null ? item.total : '';
+    const update = item.update != null ? item.update : '';
+    const belum = item.belum != null ? item.belum : '';
+    return `${item.kota}\t${total}\t${update}\t${belum}`;
+  });
+
+  return [header.join('\t'), ...lines].join('\n');
+}
+
+function renderBkbMonitoringResults(results) {
+  const el = document.getElementById('monitoring-k0-results');
+  const outEl = document.getElementById('monitoring-k0-output');
+  if (!el) return;
+  if (!results || results.length === 0) {
+    el.textContent = 'Belum ada data.';
+    if (outEl) outEl.value = '';
+    return;
+  }
+
+  el.textContent = results.map(item => {
+    return `${item.kota} -> Total: ${item.total} | Update: ${item.update} | Belum: ${item.belum}`;
+  }).join('\n');
+
+  if (outEl) outEl.value = generateBkbMonitoringOutput(results);
+}
+
+function setupBkbMonitoring() {
+  const startBtn = document.getElementById('start-monitoring-k0');
+  const resetBtn = document.getElementById('reset-monitoring-k0');
+
+  const refreshStatus = async () => {
+    chrome.storage.local.get('bkbMonitoring', (data) => {
+      const st = data.bkbMonitoring || null;
+      if (!st) {
+        setBkbMonitoringStatus('Menunggu');
+        renderBkbMonitoringResults([]);
+        if (startBtn) startBtn.disabled = false;
+        return;
+      }
+      const { mode, currentIndex, queue, results } = st;
+      if (mode === 'active') {
+        setBkbMonitoringStatus(`Jalankan: ${currentIndex || 0}/${(queue || []).length} kabupaten`);
+        if (startBtn) startBtn.disabled = true;
+      } else if (mode === 'done') {
+        setBkbMonitoringStatus(`Selesai: ${results ? results.length : 0} kabupaten`);
+        if (startBtn) startBtn.disabled = false;
+      } else {
+        setBkbMonitoringStatus('Menunggu');
+        if (startBtn) startBtn.disabled = false;
+      }
+      renderBkbMonitoringResults(results || []);
+    });
+  };
+
+  if (startBtn) {
+    startBtn.addEventListener('click', async () => {
+      setBkbMonitoringStatus('Menyiapkan...');
+      if (startBtn) startBtn.disabled = true;
+      const queue = cities.map(c => ({ id: c.id, name: c.name }));
+      // set initial state terlebih dahulu
+      const targetRoute = document.getElementById('monitoring-target')?.value || '#/kegiatan/kelompok_bkb';
+      const initialWaitSeconds = Number(document.getElementById('monitoring-initial-wait')?.value || 30);
+      const loopWaitSeconds = Number(document.getElementById('monitoring-loop-wait')?.value || 8);
+      const initialWaitMs = Math.max(1000, initialWaitSeconds * 1000);
+      const loopWaitMs = Math.max(1000, loopWaitSeconds * 1000);
+
+      chrome.storage.local.set({
+        bkbMonitoring: {
+          mode: 'waiting',
+          phase: 'init',
+          monitorTabId: null,
+          targetRoute,
+          initialWaitMs,
+          loopWaitMs,
+          currentIndex: 0,
+          queue,
+          results: [],
+          lastUpdated: Date.now()
+        }
+      }, () => {
+        chrome.tabs.create({ url: `https://newsiga-siga.bkkbn.go.id/${targetRoute}`, active: true }, (tab) => {
+          if (!tab || !tab.id) {
+            alert('Gagal membuka tab monitoring; coba lagi.');
+            setBkbMonitoringStatus('Error membuka tab.');
+            if (startBtn) startBtn.disabled = false;
+            return;
+          }
+
+          chrome.storage.local.get(['bkbMonitoring'], (existing) => {
+            const targetRouteFromState = existing?.bkbMonitoring?.targetRoute || '#/kegiatan/kelompok_bkb';
+            const initialWaitMsFromState = existing?.bkbMonitoring?.initialWaitMs || initialWaitMs;
+            const loopWaitMsFromState = existing?.bkbMonitoring?.loopWaitMs || loopWaitMs;
+            chrome.storage.local.set({
+              bkbMonitoring: {
+                mode: 'active',
+                phase: 'init',
+                monitorTabId: tab.id,
+                targetRoute: targetRouteFromState,
+                initialWaitMs: initialWaitMsFromState,
+                loopWaitMs: loopWaitMsFromState,
+                currentIndex: 0,
+                queue,
+                results: [],
+                lastUpdated: Date.now()
+              }
+            }, () => {
+              setBkbMonitoringStatus('Tab monitoring sudah dibuka. Menunggu data…');
+            });
+          });
+        });
+      });
+    });
+  }
+
+  const copyBtn = document.getElementById('copy-bkb-result');
+  const copyNote = document.getElementById('copy-bkb-result-note');
+
+  if (copyBtn) {
+    copyBtn.addEventListener('click', () => {
+      const outEl = document.getElementById('monitoring-k0-output');
+      if (!outEl || !outEl.value || outEl.value.trim() === '') {
+        if (copyNote) copyNote.textContent = 'Tidak ada data untuk disalin.';
+        return;
+      }
+      outEl.select();
+      document.execCommand('copy');
+      if (copyNote) copyNote.textContent = 'Tersalin! Tempel (paste) ke Excel/dokumen lain.';
+      setTimeout(() => { if (copyNote) copyNote.textContent = ''; }, 2500);
+    });
+  }
+
+  if (resetBtn) {
+    resetBtn.addEventListener('click', () => {
+      chrome.storage.local.remove('bkbMonitoring', () => {
+        setBkbMonitoringStatus('Direset. Tekan Mulai.');
+        renderBkbMonitoringResults([]);
+        if (startBtn) startBtn.disabled = false;
+      });
+    });
+  }
+
+  ['monitoring-target', 'monitoring-initial-wait', 'monitoring-loop-wait'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('change', saveUserPrefs);
+    }
+  });
+
+  setInterval(refreshStatus, 1200);
+  refreshStatus();
+}
+
+setupBkbMonitoring();
+
 // Form submit handlers
 function extractNumericCode(label) {
   if (!label) return '';
@@ -1474,6 +1639,12 @@ const menuConfig = {
       { id: 'pascapersalinan', label: 'Pascapersalinan' },
       { id: 'baduta', label: 'Baduta' }
     ]
+  },
+  'monitoring-k0': {
+    label: 'Monitoring K0',
+    submenus: [
+      { id: 'monitoring-k0', label: 'Monitoring K0' }
+    ]
   }
 };
 
@@ -1522,6 +1693,9 @@ const fieldVisibilityConfig = {
   'baduta': {
     hideTabs: ['tahunan'],
     bulanan: { hide: ['jenis-laporan-bulanan'] }
+  },
+  'monitoring-k0': {
+    hideTabs: ['tahunan', 'bulanan', 'download']
   }
   // additional sub-menu configs will be added here as each report type is built out
 };
@@ -1755,6 +1929,18 @@ function applyFieldVisibility(reportId) {
     }
   });
 
+  const monitorPanel = document.getElementById('monitoring-k0-panel');
+  if (monitorPanel) {
+    monitorPanel.style.display = reportId === 'monitoring-k0' ? 'block' : 'none';
+  }
+
+  if (reportId === 'monitoring-k0') {
+    // hide all existing tab contents while monitoring
+    document.querySelectorAll('.tab-content').forEach(el => { el.style.display = 'none'; });
+    if (tabsBar) tabsBar.style.display = 'none';
+    return;
+  }
+
   if (!config) return;
 
   if (config.tahunan && config.tahunan.hide) {
@@ -1800,6 +1986,18 @@ document.querySelectorAll('.menu-item[data-menu]').forEach(btn => {
     if (!menu) return;
 
     activeMenuId = menuId;
+
+    // Jika menu monitoring K0 (langsung tanpa submenu)
+    if (menuId === 'monitoring-k0') {
+      activeSubmenuId = 'monitoring-k0';
+      const breadcrumb = document.getElementById('breadcrumb-label');
+      if (breadcrumb) breadcrumb.textContent = `${menu.label}  ›  Monitoring K0`;
+
+      applyFieldVisibility(activeSubmenuId);
+      showScreen(formScreen);
+      saveUserPrefs();
+      return;
+    }
 
     // Populate sub-menu
     const submenuTitle = document.getElementById('submenu-title');
@@ -1881,6 +2079,9 @@ function saveUserPrefs() {
     activeScreen: formScreen.style.display !== 'none' ? 'form'
       : submenuScreen.style.display !== 'none' ? 'submenu' : 'menu',
     activeTab: document.querySelector('.tab-button.active')?.getAttribute('data-tab') || 'tahunan',
+    monitoringTarget: document.getElementById('monitoring-target')?.value || '#/kegiatan/kelompok_bkb',
+    monitoringInitialWait: document.getElementById('monitoring-initial-wait')?.value || '30',
+    monitoringLoopWait: document.getElementById('monitoring-loop-wait')?.value || '8'
   };
   ['tahunan', 'bulanan'].forEach(tab => {
     prefs[`cities_${tab}`] = Array.from(
@@ -1924,6 +2125,14 @@ function restoreUserPrefs() {
   chrome.storage.local.get(PREFS_KEY, data => {
     const prefs = data[PREFS_KEY];
     if (!prefs) return;
+
+    // Restore monitoring settings (target dan wait values)
+    const monitoringTargetEl = document.getElementById('monitoring-target');
+    const monitoringInitialEl = document.getElementById('monitoring-initial-wait');
+    const monitoringLoopEl = document.getElementById('monitoring-loop-wait');
+    if (monitoringTargetEl && prefs.monitoringTarget) monitoringTargetEl.value = prefs.monitoringTarget;
+    if (monitoringInitialEl && prefs.monitoringInitialWait) monitoringInitialEl.value = prefs.monitoringInitialWait;
+    if (monitoringLoopEl && prefs.monitoringLoopWait) monitoringLoopEl.value = prefs.monitoringLoopWait;
 
     // Restore simple fields & checkboxes untuk kedua tab
     ['tahunan', 'bulanan'].forEach(tab => {

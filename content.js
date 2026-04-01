@@ -5,17 +5,60 @@
 
   // Fungsi: Cari dropdown berdasarkan label di parent/teks sekita
 
-  function findDropdownHybrid(labelText, fallbackIndex = 0) {
-    // Cari field by label (mirip patch sebelumnya)
-    const formGroups = document.querySelectorAll('.form-group');
-    for (const group of formGroups) {
-      const label = group.querySelector('label');
-      if (label && label.textContent.trim().toLowerCase().includes(labelText.toLowerCase())) {
-        return group.querySelector('.css-yk16xz-control');
+  function findDropdownControl(labelText, fallbackIndex = 0) {
+    const lowerLabel = (labelText || '').toString().trim().toLowerCase();
+
+    const labelEls = [...document.querySelectorAll('label')].filter(l =>
+      l.textContent && l.textContent.trim().toLowerCase().includes(lowerLabel)
+    );
+    for (const label of labelEls) {
+      const container = label.closest('.form-group, .ant-form-item, .ant-form-item-control, .css-1bq5ukv, .row, .col');
+      if (container) {
+        const candidate = container.querySelector(
+          'div[role="combobox"], div[role="button"], input[role="combobox"], .css-yk16xz-control, .ant-select-selector, .react-select__control, .select-container'
+        );
+        if (candidate) return candidate;
+      }
+      // jika direct sibling
+      const sibling = label.parentElement && label.parentElement.querySelector(
+        'div[role="combobox"], .css-yk16xz-control, .ant-select-selector, .react-select__control'
+      );
+      if (sibling) return sibling;
+    }
+
+    {
+      const candidateByAttr = [...document.querySelectorAll('input, div[role="combobox"], div[role="button"], .ant-select-selector, .react-select__control')].find(el => {
+        const candidateText = (
+          (el.placeholder || '') + ' ' +
+          (el.getAttribute('aria-label') || '') + ' ' +
+          (el.getAttribute('title') || '') + ' ' +
+          (el.getAttribute('data-testid') || '')
+        ).toString().toLowerCase();
+        return lowerLabel && candidateText.includes(lowerLabel);
+      });
+      if (candidateByAttr) return candidateByAttr;
+    }
+
+    const fallbackSelectors = [
+      'div[role="combobox"]',
+      'div[role="button"]',
+      'input[role="combobox"]',
+      '.css-yk16xz-control',
+      '.ant-select-selector',
+      '.react-select__control',
+      '.select-container'
+    ];
+
+    for (const sel of fallbackSelectors) {
+      const nodes = document.querySelectorAll(sel);
+      if (nodes.length > 0) {
+        if (fallbackIndex < nodes.length) return nodes[fallbackIndex];
+        return nodes[0];
       }
     }
-    // Fallback by index array
-    return document.querySelectorAll('.css-yk16xz-control')[fallbackIndex] || null;
+
+    const nodes = document.querySelectorAll('.css-yk16xz-control');
+    return nodes[fallbackIndex] || nodes[0] || null;
   }
 
   // Tunggu hingga dropdown control muncul (untuk kasus SPA yang render async)
@@ -23,7 +66,7 @@
     const start = Date.now();
     let control;
     while (Date.now() - start < timeout) {
-      control = findDropdownHybrid(labelText, fallbackIndex);
+      control = findDropdownControl(labelText, fallbackIndex);
       if (control) return control;
       await wait(interval);
     }
@@ -101,10 +144,10 @@
 
   // Fungsi observer + fallback polling untuk opsi dropdown
   async function waitForDropdownOptions(
-    selectorOpt = '.css-yt9ioa-option, .css-1n7v3ny-option, .css-9gakcf-option',
-    timeout = 12000
+    selectorOpt = '.css-yt9ioa-option, .css-1n7v3ny-option, .css-9gakcf-option, .ant-select-item, .ant-select-dropdown-menu-item, .react-select__option, [role="option"]',
+    timeout = 8000
   ) {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       let found = false;
       const observer = new MutationObserver(() => {
         const options = document.querySelectorAll(selectorOpt);
@@ -118,16 +161,15 @@
       observer.observe(document.body, { childList: true, subtree: true });
 
       setTimeout(() => {
-        if (!found) {
-          observer.disconnect();
-          reject(new Error('❌ Dropdown options tidak muncul dalam waktu cukup.'));
-        }
+        observer.disconnect();
+        // fallback: resolve empty options agar caller tidak exception
+        resolve(document.querySelectorAll(selectorOpt));
       }, timeout);
     });
   }
 
   async function pollingDropdownOptions(
-    selectorOpt = '.css-yt9ioa-option, .css-1n7v3ny-option, .css-9gakcf-option',
+    selectorOpt = '.css-yt9ioa-option, .css-1n7v3ny-option, .css-9gakcf-option, .ant-select-item, .ant-select-dropdown-menu-item, .react-select__option, [role="option"]',
     timeout = 12000,
     interval = 200
   ) {
@@ -160,11 +202,14 @@
     control.focus();
     control.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'ArrowDown', code: 'ArrowDown' }));
 
+    await waitForDropdownOptions();
+
     // Poll opsi dengan fuzzy match
     const maxTries = 30;
     let opsi = null;
     for (let tries = 0; tries < maxTries; tries++) {
-      opsi = [...document.querySelectorAll('.css-yt9ioa-option, .css-1n7v3ny-option, .css-9gakcf-option')].find(el => {
+      const allOptions = [...document.querySelectorAll('.css-yt9ioa-option, .css-1n7v3ny-option, .css-9gakcf-option, .ant-select-item, .ant-select-dropdown-menu-item, .react-select__option, [role="option"]')];
+      opsi = allOptions.find(el => {
         const textOption = el.textContent.trim().replace(/\u2013|\u2014/g, '-').toLowerCase();
         return (
           textOption === userValue ||
@@ -173,6 +218,17 @@
         );
       });
       if (opsi) break;
+
+      // fallback numeric code matches: 01 - ACEH SELATAN => 01, ACEH SELATAN
+      const userCode = (targetTextRaw || '').toString().trim().split(' ')[0];
+      if (userCode && /^\d+/.test(userCode)) {
+        opsi = allOptions.find(el => {
+          const text = el.textContent.trim().replace(/\u2013|\u2014/g, '-').toLowerCase();
+          return text.includes(userCode.toLowerCase());
+        });
+        if (opsi) break;
+      }
+
       await wait(100);
     }
 
@@ -209,6 +265,128 @@
         resolve();
       });
     });
+  }
+
+  function parseCount(text) {
+    if (!text) return null;
+    const m = text.toString().replace(/[\.]/g, '').match(/\d+/);
+    return m ? parseInt(m[0], 10) : null;
+  }
+
+  async function waitForButtonByText(label, timeout = 12000) {
+    const start = Date.now();
+    while (Date.now() - start < timeout) {
+      const btn = [...document.querySelectorAll('button')].find(b => b.textContent && b.textContent.trim().toLowerCase().includes(label.toLowerCase()));
+      if (btn) return btn;
+      await wait(300);
+    }
+    return null;
+  }
+
+  async function extractTotalUpdateBelum() {
+    const text = (document.body && document.body.innerText) ? document.body.innerText : '';
+    const getValue = (key) => {
+      const regex = new RegExp(key + '\\s*[:\\-]?\\s*([\\d\\.,]+)', 'i');
+      const m = text.match(regex);
+      return m ? parseCount(m[1]) : 'N/A';
+    };
+    return {
+      total: getValue('Total'),
+      update: getValue('Update'),
+      belum: getValue('Belum')
+    };
+  }
+
+  async function waitForBkbDataReady(timeout = 20000) {
+    const start = Date.now();
+    while (Date.now() - start < timeout) {
+      const bodyText = (document.body && document.body.innerText) ? document.body.innerText : '';
+      const loadingElement = document.querySelector('.ant-spin, .spinner, [role="progressbar"], .loading, .loader');
+      const hasRows = document.querySelectorAll('table tbody tr').length > 0;
+      const hasNumeric = /total\s*[:\-]?\s*[\d\.,]+/i.test(bodyText);
+      if (!loadingElement && (hasRows || hasNumeric)) {
+        return true;
+      }
+      await wait(300);
+    }
+    return false;
+  }
+
+  async function handleBkbMonitoringLoop(monitorState) {
+    if (!monitorState || !Array.isArray(monitorState.queue)) return;
+    let currentIndex = monitorState.currentIndex || 0;
+    let results = Array.isArray(monitorState.results) ? monitorState.results : [];
+
+    // Initial load: tunggu sampai datanya siap (bisa lebih lama pada awal tab dibuka)
+    const initialWaitMs = (monitorState && typeof monitorState.initialWaitMs === 'number') ? monitorState.initialWaitMs : 30000;
+    const loopWaitMs = (monitorState && typeof monitorState.loopWaitMs === 'number') ? monitorState.loopWaitMs : 8000;
+    await waitForBkbDataReady(initialWaitMs);
+    const acehValues = await extractTotalUpdateBelum();
+    if (!results.some(r => r.kota === 'PROVINSI')) {
+      results.push({ kota: 'PROVINSI', ...acehValues });
+      await chrome.storage.local.set({
+        bkbMonitoring: {
+          ...monitorState,
+          mode: 'active',
+          currentIndex,
+          results,
+          lastUpdated: Date.now()
+        }
+      });
+    }
+
+    const cariButton = await waitForButtonByText('Cari', 10000);
+
+    for (; currentIndex < monitorState.queue.length; currentIndex++) {
+      const kotaEntry = monitorState.queue[currentIndex];
+      if (!kotaEntry || !kotaEntry.name) continue;
+
+      const kotaDropdown = await waitForDropdown('Kab/Kota', 2);
+      if (!kotaDropdown) {
+        console.warn(`[BKB] Dropdown Kab/Kota tidak ditemukan untuk ${kotaEntry.name}`);
+        continue;
+      }
+
+      const selected = await bukaDanPilihPadaDropdown(kotaDropdown, kotaEntry.name);
+      if (!selected) {
+        console.warn(`[BKB] Gagal memilih ${kotaEntry.name}, lanjut ke berikutnya.`);
+        continue;
+      }
+
+      await wait(250);
+      if (cariButton) {
+        cariButton.click();
+      }
+
+      // Per-kab: gunakan timeout berdasarkan setting loopWaitMs
+      await waitForBkbDataReady(loopWaitMs);
+      await wait(200);
+
+      const values = await extractTotalUpdateBelum();
+      results.push({ kota: kotaEntry.name, ...values });
+
+      await chrome.storage.local.set({
+        bkbMonitoring: {
+          ...monitorState,
+          mode: 'active',
+          currentIndex: currentIndex + 1,
+          results,
+          lastUpdated: Date.now()
+        }
+      });
+      await wait(600);
+    }
+
+    await chrome.storage.local.set({
+      bkbMonitoring: {
+        ...monitorState,
+        mode: 'done',
+        currentIndex,
+        results,
+        lastUpdated: Date.now()
+      }
+    });
+    console.log('[BKB] Monitoring selesai', results);
   }
 
 
@@ -286,13 +464,75 @@
   // Automation: Ambil data dari storage untuk tab ini
   const tab = await chrome.runtime.sendMessage({ action: "getTabId" });
   const key = `auto_${tab.id}`;
+
+  console.log('[content] started in tab', tab, 'url', window.location.href, 'hash', window.location.hash);
+
+  async function waitForMonitorState(timeout = 30000, interval = 300) {
+    const start = Date.now();
+    while (Date.now() - start < timeout) {
+      const monitorState = await new Promise((resolve) =>
+        chrome.storage.local.get(['bkbMonitoring'], (res) => resolve(res.bkbMonitoring || null))
+      );
+      if (monitorState && (monitorState.mode === 'active' || monitorState.mode === 'waiting')) {
+        return monitorState;
+      }
+      await wait(interval);
+    }
+    return null;
+  }
+
+  const monitorState = await waitForMonitorState();
+
+  if (monitorState) {
+    console.log('[content] found monitorState', monitorState);
+
+    const targetHash = monitorState.targetRoute || '/kegiatan/kelompok_bkb';
+    if (!location.hash.includes(targetHash)) {
+      console.log('[content] URL hash belum target, menunggu sampai 15s..', location.hash);
+      const start = Date.now();
+      while (Date.now() - start < 15000 && !location.hash.includes(targetHash)) {
+        await wait(300);
+      }
+    }
+
+    if (location.hash.includes(targetHash)) {
+      console.log(`🟢 Monitoring SIGA trigger (target ${targetHash})`);
+      await handleBkbMonitoringLoop(monitorState);
+      return;
+    }
+
+    console.log(`🟡 Monitoring SIGA aktif tapi URL target ${targetHash} belum, tidak lanjut sekarang.`);
+    return;
+  }
+
+  // Monitoring tidak ditemukan untuk tab ini, lanjut ke logika old auto_
+  let bkbMonitoringRunning = false;
+
+  const handlePotentialMonitorState = async (monitorState) => {
+    if (bkbMonitoringRunning) return;
+    if (!monitorState || monitorState.mode !== 'active') return;
+
+    const targetHash = monitorState.targetRoute || '/kegiatan/kelompok_bkb';
+    if (!location.hash.includes(targetHash)) return;
+
+    bkbMonitoringRunning = true;
+    console.log('[content] bkbMonitoring aktif, menjalankan loop dari onChanged/initial');
+    await handleBkbMonitoringLoop(monitorState);
+  };
+
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== 'local') return;
+    if (changes.bkbMonitoring) {
+      handlePotentialMonitorState(changes.bkbMonitoring.newValue);
+    }
+  });
+
   const storage = await new Promise((resolve) =>
     chrome.storage.local.get([key], (res) => resolve(res[key]))
   );
 
-
   if (!storage) {
-    console.log("⛔ Tidak ada data automation untuk tab ini");
+    console.log('[content] tidak ada state auto_ maupun bkbMonitoring untuk tab ini, tidak ada tindakan.');
     return;
   }
 
