@@ -3,44 +3,45 @@
 
 <head>
   <meta charset="UTF-8">
-  <title>Excel Downloader</title>
+  <title>SIGA Smart Downloader</title>
   <link rel="stylesheet" href="popup.css">
 </head>
 
 <body>
   <div class="container">
-    <img src="assets/logo.png" alt="Logo" class="logo-center"
-      style="max-width:250px; margin-top:0px; margin-bottom:10px;">
+    <!-- Logo -->
+    <img src="assets/logo.png" alt="SIGA Smart Downloader" class="logo-center"
+      style="max-width:260px; margin-top:8px; margin-bottom:4px;">
 
     <!-- Screen 1: Pilih Kategori Laporan -->
-    <div id="menu-screen">
+    <div id="menu-screen" style="padding:0 24px;">
       <p class="menu-screen-hint">Pilih jenis laporan:</p>
       <div class="menu-list">
         <button class="menu-item" data-menu="laporan">
-          <span class="menu-item-label">LAPORAN</span>
+          <span class="menu-item-label">📊 LAPORAN</span>
           <span class="menu-item-chevron">›</span>
         </button>
         <button class="menu-item" data-menu="rekapitulasi">
-          <span class="menu-item-label">REKAPITULASI</span>
+          <span class="menu-item-label">📋 REKAPITULASI</span>
           <span class="menu-item-chevron">›</span>
         </button>
         <button class="menu-item" data-menu="verval-krs">
-          <span class="menu-item-label">VERVAL KRS</span>
+          <span class="menu-item-label">✅ VERVAL KRS</span>
           <span class="menu-item-chevron">›</span>
         </button>
         <button class="menu-item" data-menu="pendaftaran-elsimil">
-          <span class="menu-item-label">Pendaftaran ELSIMIL</span>
+          <span class="menu-item-label">👶 Pendaftaran ELSIMIL</span>
           <span class="menu-item-chevron">›</span>
         </button>
         <button class="menu-item" data-menu="monitoring-k0">
-          <span class="menu-item-label">Monitoring K0</span>
+          <span class="menu-item-label">📡 Monitoring K0</span>
           <span class="menu-item-chevron">›</span>
         </button>
       </div>
     </div>
 
     <!-- Screen 2: Pilih Sub-Kategori -->
-    <div id="submenu-screen" style="display:none;">
+    <div id="submenu-screen" style="display:none; padding:0 24px;">
       <button class="btn-back" id="back-to-menu">← Kembali</button>
       <p class="menu-screen-title" id="submenu-title"></p>
       <div class="menu-list" id="submenu-list"></div>
@@ -48,15 +49,17 @@
 
     <!-- Screen 3: Form (Tahunan / Bulanan / Download) -->
     <div id="form-screen" style="display:none;">
-      <button class="btn-back" id="back-to-submenu">← Kembali</button>
-      <p class="menu-breadcrumb" id="breadcrumb-label"></p>
+      <div style="padding:0 24px;">
+        <button class="btn-back" id="back-to-submenu">← Kembali</button>
+        <p class="menu-breadcrumb" id="breadcrumb-label"></p>
+      </div>
 
-      <div id="monitoring-k0-panel"
-        style="display:none; margin-bottom:20px; padding:12px; border:1px solid #ccc; border-radius:8px; background:#f8f8ff;">
-        <h3 style="margin-top:0;">Monitoring SIGA</h3>
-        <div class="form-group" style="margin-bottom:10px;">
+      <!-- Monitoring K0 Panel -->
+      <div id="monitoring-k0-panel" class="monitoring-panel" style="display:none;">
+        <h3>📡 Monitoring SIGA</h3>
+        <div class="form-group" style="margin-bottom:12px;">
           <label for="monitoring-target">Pilih target monitoring:</label>
-          <select id="monitoring-target" style="width:100%; padding:6px; margin-top:4px;">
+          <select id="monitoring-target">
             <option value="#/pendaftaran">FASKES</option>
             <option value="#/kegiatan/kelompok_bkb">Kelompok BKB</option>
             <option value="#/kegiatan/kelompok_bkr">Kelompok BKR</option>
@@ -75,243 +78,236 @@
           </select>
         </div>
 
-        <div class="form-group" style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px;">
-          <div>
+        <div class="grid-2-col">
+          <div class="form-group">
             <label for="monitoring-initial-wait">Initial wait (detik):</label>
-            <input id="monitoring-initial-wait" type="number" min="1" value="30" style="width:100%; padding:6px;" />
+            <input id="monitoring-initial-wait" type="number" min="1" value="30">
           </div>
-          <div>
+          <div class="form-group">
             <label for="monitoring-loop-wait">Loop wait (detik):</label>
-            <input id="monitoring-loop-wait" type="number" min="1" value="8" style="width:100%; padding:6px;" />
+            <input id="monitoring-loop-wait" type="number" min="1" value="8">
           </div>
         </div>
 
-        <button id="start-monitoring-k0" type="button" class="btn-primary" style="margin-bottom:10px;">▶️ Mulai Ambil
-          Data</button>
-        <button id="reset-monitoring-k0" type="button" class="btn-outline"
-          style="margin-bottom:10px; margin-left:8px;">🔄 Reset</button>
-        <div id="monitoring-k0-status" style="margin-bottom:8px; font-weight:600; color:#123;">Status: Menunggu</div>
-        <div id="monitoring-k0-results"
-          style="max-height:260px; overflow:auto; font-size:13px; white-space:pre-wrap; background:#fff; border:1px solid #ddd; padding:10px; border-radius:6px;">
+        <div style="display:flex; gap:8px; margin-bottom:14px;">
+          <button id="start-monitoring-k0" type="button" class="btn-start-monitoring">▶ Mulai Ambil Data</button>
+          <button id="reset-monitoring-k0" type="button" class="btn-reset-monitoring">🔄 Reset</button>
         </div>
-        <div style="margin-top:8px; display:flex; gap:8px; align-items:center;">
-          <button id="copy-bkb-result" class="btn-outline" type="button" style="padding:5px 10px;">📋 Salin ke
-            Clipboard</button>
-          <span id="copy-bkb-result-note" style="font-size:12px; color:#666;"></span>
+
+        <div id="monitoring-k0-status" class="monitoring-status">Status: Menunggu</div>
+
+        <div id="monitoring-k0-results" class="monitoring-results"></div>
+
+        <div style="margin-top:10px; display:flex; gap:8px; align-items:center;">
+          <button id="copy-bkb-result" class="btn-copy" type="button">📋 Salin ke Clipboard</button>
+          <span id="copy-bkb-result-note" class="text-muted"></span>
         </div>
+
         <textarea id="monitoring-k0-output" readonly
-          style="width:100%; height:120px; margin-top:8px; font-size:12px;"> </textarea>
+          style="width:100%; height:120px; margin-top:10px; font-size:12px;"> </textarea>
       </div>
+
       <div class="tabs" id="tabs-bar">
         <button class="tab-button active" data-tab="tahunan">Tahunan</button>
         <button class="tab-button" data-tab="bulanan">Bulanan</button>
         <button class="tab-button" data-tab="download">Download</button>
       </div>
 
-      <!-- Tahunan Tab Content -->
-      <div id="tahunan-content" class="tab-content active">
-        <form id="tahunan-form" class="form-content">
+      <div class="form-section-wrapper">
+        <!-- Tahunan Tab Content -->
+        <div id="tahunan-content" class="tab-content active">
+          <form id="tahunan-form" class="form-content">
 
-          <!-- Tabel Selector -->
-          <div class="form-group" id="tabel-selector-tahunan" style="display:none;">
-            <label>Pilih Tabel yang akan didownload:</label>
-            <div class="button-group" style="margin-bottom:6px;margin-top: 6px;">
-              <button type="button" class="btn-outline" id="select-all-tabel-tahunan">Pilih Semua</button>
-              <button type="button" class="btn-outline" id="reset-tabel-tahunan">Reset</button>
+            <!-- Tabel Selector -->
+            <div class="form-group" id="tabel-selector-tahunan" style="display:none;">
+              <label>Pilih Tabel yang akan didownload:</label>
+              <div class="button-group" style="margin-bottom:6px;margin-top: 6px;">
+                <button type="button" class="btn-outline" id="select-all-tabel-tahunan">Pilih Semua</button>
+                <button type="button" class="btn-outline" id="reset-tabel-tahunan">Reset</button>
+              </div>
+              <div id="tabel-checkboxes-tahunan" class="checkbox-grid tabel-checkbox-grid"></div>
+              <div id="tabel-count-tahunan" class="tabel-count">0 tabel dipilih</div>
             </div>
-            <div id="tabel-checkboxes-tahunan" class="checkbox-grid tabel-checkbox-grid"></div>
-            <div id="tabel-count-tahunan" style="margin-top:5px;font-size:12px;color:#555;">0 tabel dipilih</div>
-          </div>
 
-          <div class="form-group">
-            <label for="urls-tahunan">List of URLs:</label>
-            <textarea id="urls-tahunan" placeholder="Satu URL per baris" readonly></textarea>
-            <div id="url-count-tahunan" style="margin-top:4px;font-size:12px;color:#555;">0 URL valid</div>
-          </div>
-          <div class="form-group">
-            <label for="periode-tahunan">Periode (Tahun):</label>
-            <input type="text" id="periode-tahunan" placeholder="Contoh: 2024" value="2026">
-          </div>
-          <div class="form-group">
-            <label>Pilih Kab/Kota (bisa lebih dari satu):</label>
-            <div class="button-group">
-              <button type="button" class="btn-outline" id="select-all-tahunan">Pilih Semua</button>
-              <button type="button" class="btn-outline" id="reset-tahunan">Reset</button>
+            <div class="form-group">
+              <label for="urls-tahunan">List of URLs:</label>
+              <textarea id="urls-tahunan" placeholder="Satu URL per baris" readonly></textarea>
+              <div id="url-count-tahunan" class="url-count">0 URL valid</div>
             </div>
-            <div id="cities-tahunan" class="checkbox-grid"></div>
-          </div>
-          <div class="form-group" id="kecamatan-group-tahunan" style="display:none;">
-            <label>Pilih Kecamatan (bisa lebih dari satu):</label>
-            <!-- Hidden input for JS value compatibility -->
-            <input type="text" id="kecamatan-tahunan" style="display:none;">
-            <div class="button-group" style="margin-bottom:6px;margin-top:6px;">
-              <button type="button" class="btn-outline" id="select-all-kecamatan-tahunan">Pilih Semua</button>
-              <button type="button" class="btn-outline" id="reset-kecamatan-tahunan">Reset</button>
+            <div class="form-group">
+              <label for="periode-tahunan">Periode (Tahun):</label>
+              <input type="text" id="periode-tahunan" placeholder="Contoh: 2024" value="2026">
             </div>
-            <div id="kecamatan-checkboxes-tahunan" class="checkbox-grid" style="max-height:200px;overflow-y:auto;">
+            <div class="form-group">
+              <label>Pilih Kab/Kota (bisa lebih dari satu):</label>
+              <div class="button-group">
+                <button type="button" class="btn-outline" id="select-all-tahunan">Pilih Semua</button>
+                <button type="button" class="btn-outline" id="reset-tahunan">Reset</button>
+              </div>
+              <div id="cities-tahunan" class="checkbox-grid"></div>
             </div>
-          </div>
-          <div class="form-group">
-            <label for="desa-tahunan">Desa/Kel:</label>
-            <input type="text" id="desa-tahunan" placeholder="Contoh: 2001 - KEUDE BAKONGAN">
-            <div style="margin-top:6px; font-size:13px;">
-              <input type="checkbox" id="all-desa-tahunan" /> <label for="all-desa-tahunan">Download semua desa untuk
-                kecamatan ini</label>
+            <div class="form-group" id="kecamatan-group-tahunan" style="display:none;">
+              <label>Pilih Kecamatan (bisa lebih dari satu):</label>
+              <!-- Hidden input for JS value compatibility -->
+              <input type="text" id="kecamatan-tahunan" style="display:none;">
+              <div class="button-group" style="margin-bottom:6px;margin-top:6px;">
+                <button type="button" class="btn-outline" id="select-all-kecamatan-tahunan">Pilih Semua</button>
+                <button type="button" class="btn-outline" id="reset-kecamatan-tahunan">Reset</button>
+              </div>
+              <div id="kecamatan-checkboxes-tahunan" class="checkbox-grid" style="max-height:200px;overflow-y:auto;">
+              </div>
             </div>
-            <div id="list-desa-tahunan"
-              style="display:none; margin-top:8px; max-height:200px; overflow:auto; border:1px solid #eee; padding:6px; border-radius:6px;">
+            <div class="form-group">
+              <label for="desa-tahunan">Desa/Kel:</label>
+              <input type="text" id="desa-tahunan" placeholder="Contoh: 2001 - KEUDE BAKONGAN">
+              <div class="checkbox-inline">
+                <input type="checkbox" id="all-desa-tahunan">
+                <label for="all-desa-tahunan">Download semua desa untuk kecamatan ini</label>
+              </div>
+              <div id="list-desa-tahunan" class="desa-list-container"></div>
+              <div id="desa-count-tahunan" class="desa-count" style="display:none;"></div>
             </div>
-            <div id="desa-count-tahunan"
-              style="display:none; margin-top:5px; font-size:12px; font-weight:600; color:#484dde;"></div>
-            <div id="desa-count-tahunan"
-              style="display:none; margin-top:5px; font-size:12px; font-weight:600; color:#484dde;"></div>
-          </div>
-          <div class="form-group">
-            <label for="rw-tahunan">RW:</label>
-            <input type="text" id="rw-tahunan" placeholder="Contoh: 0100 - DUSUN SKEP">
-          </div>
-          <div class="form-group">
-            <label for="sasaran-tahunan">Kelompok Sasaran:</label>
-            <input type="text" id="sasaran-tahunan" placeholder="Contoh: Baduta">
-          </div>
-          <div class="form-group">
-            <label for="jenis-laporan-tahunan">Jenis Laporan:</label>
-            <select id="jenis-laporan-tahunan">
-              <option value="" selected>Pilih jenis laporan</option>
-              <option value="rekap">Rekap</option>
-              <option value="detail">Detail</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <div style="font-size:13px;">
-              <input type="checkbox" id="enable-close-delay-tahunan">
-              <label for="enable-close-delay-tahunan">Tambah waktu tunggu sebelum tutup tab</label>
+            <div class="form-group">
+              <label for="rw-tahunan">RW:</label>
+              <input type="text" id="rw-tahunan" placeholder="Contoh: 0100 - DUSUN SKEP">
             </div>
-            <div id="close-delay-panel-tahunan" style="display:none;margin-top:8px;">
-              <label for="close-delay-tahunan">Durasi (detik):</label>
-              <input type="number" id="close-delay-tahunan" min="5" max="300" value="10"
-                style="width:80px;margin-left:8px;">
-              <div style="font-size:11px;color:#888;margin-top:3px;">Tambah jika server lambat. Default: 10 detik.</div>
+            <div class="form-group">
+              <label for="sasaran-tahunan">Kelompok Sasaran:</label>
+              <input type="text" id="sasaran-tahunan" placeholder="Contoh: Baduta">
             </div>
-          </div>
-          <button type="submit" class="btn-primary">Jalankan</button>
-        </form>
-      </div>
-
-      <!-- Bulanan Tab Content -->
-      <div id="bulanan-content" class="tab-content">
-        <form id="bulanan-form" class="form-content">
-
-          <!-- Tabel Selector -->
-          <div class="form-group" id="tabel-selector-bulanan" style="display:none;">
-            <label>Pilih Tabel yang akan didownload:</label>
-            <div class="button-group" style="margin-bottom:6px;margin-top: 6px;">
-              <button type="button" class="btn-outline" id="select-all-tabel-bulanan">Pilih Semua</button>
-              <button type="button" class="btn-outline" id="reset-tabel-bulanan">Reset</button>
+            <div class="form-group">
+              <label for="jenis-laporan-tahunan">Jenis Laporan:</label>
+              <select id="jenis-laporan-tahunan">
+                <option value="" selected>Pilih jenis laporan</option>
+                <option value="rekap">Rekap</option>
+                <option value="detail">Detail</option>
+              </select>
             </div>
-            <div id="tabel-checkboxes-bulanan" class="checkbox-grid tabel-checkbox-grid"></div>
-            <div id="tabel-count-bulanan" style="margin-top:5px;font-size:12px;color:#555;">0 tabel dipilih</div>
-          </div>
-
-          <div class="form-group">
-            <label for="urls-bulanan">List of URLs:</label>
-            <textarea id="urls-bulanan" placeholder="Satu URL per baris" readonly></textarea>
-            <div id="url-count-bulanan" style="margin-top:4px;font-size:12px;color:#555;">0 URL valid</div>
-          </div>
-          <div class="form-group">
-            <label for="periode-bulanan">Periode (Bulan):</label>
-            <select id="periode-bulanan">
-              <option value="" selected>Pilih bulan</option>
-              <option value="Januari">Januari</option>
-              <option value="Februari">Februari</option>
-              <option value="Maret">Maret</option>
-              <option value="April">April</option>
-              <option value="Mei">Mei</option>
-              <option value="Juni">Juni</option>
-              <option value="Juli">Juli</option>
-              <option value="Agustus">Agustus</option>
-              <option value="September">September</option>
-              <option value="Oktober">Oktober</option>
-              <option value="November">November</option>
-              <option value="Desember">Desember</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label for="tahun">Tahun:</label>
-            <input type="text" id="tahun" placeholder="Contoh: 2026" value="2026">
-          </div>
-          <div class="form-group">
-            <label>Pilih Kab/Kota (bisa lebih dari satu):</label>
-            <div class="button-group">
-              <button type="button" class="btn-outline" id="select-all-bulanan">Pilih Semua</button>
-              <button type="button" class="btn-outline" id="reset-bulanan">Reset</button>
+            <div class="form-group">
+              <div class="checkbox-inline">
+                <input type="checkbox" id="enable-close-delay-tahunan">
+                <label for="enable-close-delay-tahunan">Tambah waktu tunggu sebelum tutup tab</label>
+              </div>
+              <div id="close-delay-panel-tahunan" class="close-delay-panel">
+                <label for="close-delay-tahunan">Durasi (detik):</label>
+                <input type="number" id="close-delay-tahunan" min="5" max="300" value="10"
+                  style="width:80px;margin-left:8px;">
+                <div class="text-muted" style="margin-top:4px;">Tambah jika server lambat. Default: 10 detik.</div>
+              </div>
             </div>
-            <div id="cities-bulanan" class="checkbox-grid"></div>
-          </div>
-          <div class="form-group" id="kecamatan-group-bulanan" style="display:none;">
-            <label>Pilih Kecamatan (bisa lebih dari satu):</label>
-            <!-- Hidden input for JS value compatibility -->
-            <input type="text" id="kecamatan-bulanan" style="display:none;">
-            <div class="button-group" style="margin-bottom:6px;margin-top:6px;">
-              <button type="button" class="btn-outline" id="select-all-kecamatan-bulanan">Pilih Semua</button>
-              <button type="button" class="btn-outline" id="reset-kecamatan-bulanan">Reset</button>
-            </div>
-            <div id="kecamatan-checkboxes-bulanan" class="checkbox-grid" style="max-height:200px;overflow-y:auto;">
-            </div>
-          </div>
-          <div class="form-group">
-            <label for="faskes-bulanan">Desa/Faskes:</label>
-            <input type="text" id="faskes-bulanan" placeholder="Contoh: 2001 - KEUDE BAKONGAN/PUSKESMAS LHOONG">
-            <div style="margin-top:6px; font-size:13px;">
-              <input type="checkbox" id="all-faskes-bulanan" /> <label for="all-faskes-bulanan">Download semua
-                desa</label>
-            </div>
-            <div id="list-faskes-bulanan"
-              style="display:none; margin-top:8px; max-height:200px; overflow:auto; border:1px solid #eee; padding:6px; border-radius:6px;">
-            </div>
-            <div id="desa-count-bulanan"
-              style="display:none; margin-top:5px; font-size:12px; font-weight:600; color:#484dde;"></div>
-          </div>
-          <div class="form-group">
-            <label for="jenis-laporan-bulanan">Jenis Laporan:</label>
-            <select id="jenis-laporan-bulanan">
-              <option value="" selected>Pilih jenis laporan</option>
-              <option value="rekap">Rekap</option>
-              <option value="detail">Detail</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <div style="font-size:13px;">
-              <input type="checkbox" id="enable-close-delay-bulanan">
-              <label for="enable-close-delay-bulanan">Tambah waktu tunggu sebelum tutup tab</label>
-            </div>
-            <div id="close-delay-panel-bulanan" style="display:none;margin-top:8px;">
-              <label for="close-delay-bulanan">Durasi (detik):</label>
-              <input type="number" id="close-delay-bulanan" min="5" max="300" value="10"
-                style="width:80px;margin-left:8px;">
-              <div style="font-size:11px;color:#888;margin-top:3px;">Tambah jika server lambat. Default: 10 detik.</div>
-            </div>
-          </div>
-          <button type="submit" class="btn-primary">Jalankan</button>
-        </form>
-      </div>
-      <!-- Tab Download Progress -->
-      <div id="download-content" class="tab-content">
-        <h2 style="margin-bottom: 12px; font-size: 22px;">Download Progress</h2>
-        <div style="margin-bottom: 14px; display: flex; gap: 8px; flex-wrap: wrap;">
-          <button id="retry-all-btn" type="button"
-            style="background:#ff9800; color:#fff; border:none; padding:7px 14px; border-radius:6px; cursor:pointer; font-size:13px; font-weight:600;">
-            ♻️ Retry Semua Gagal &amp; Progress
-          </button>
-          <button id="clear-done-btn" type="button"
-            style="background:#555; color:#fff; border:none; padding:7px 14px; border-radius:6px; cursor:pointer; font-size:13px;">
-            🗑️ Bersihkan yang Selesai
-          </button>
+            <button type="submit" class="btn-primary">▶ Jalankan Download</button>
+          </form>
         </div>
-        <div id="download-progress-list"></div>
-      </div>
 
+        <!-- Bulanan Tab Content -->
+        <div id="bulanan-content" class="tab-content">
+          <form id="bulanan-form" class="form-content">
+
+            <!-- Tabel Selector -->
+            <div class="form-group" id="tabel-selector-bulanan" style="display:none;">
+              <label>Pilih Tabel yang akan didownload:</label>
+              <div class="button-group" style="margin-bottom:6px;margin-top: 6px;">
+                <button type="button" class="btn-outline" id="select-all-tabel-bulanan">Pilih Semua</button>
+                <button type="button" class="btn-outline" id="reset-tabel-bulanan">Reset</button>
+              </div>
+              <div id="tabel-checkboxes-bulanan" class="checkbox-grid tabel-checkbox-grid"></div>
+              <div id="tabel-count-bulanan" class="tabel-count">0 tabel dipilih</div>
+            </div>
+
+            <div class="form-group">
+              <label for="urls-bulanan">List of URLs:</label>
+              <textarea id="urls-bulanan" placeholder="Satu URL per baris" readonly></textarea>
+              <div id="url-count-bulanan" class="url-count">0 URL valid</div>
+            </div>
+            <div class="form-group">
+              <label for="periode-bulanan">Periode (Bulan):</label>
+              <select id="periode-bulanan">
+                <option value="" selected>Pilih bulan</option>
+                <option value="Januari">Januari</option>
+                <option value="Februari">Februari</option>
+                <option value="Maret">Maret</option>
+                <option value="April">April</option>
+                <option value="Mei">Mei</option>
+                <option value="Juni">Juni</option>
+                <option value="Juli">Juli</option>
+                <option value="Agustus">Agustus</option>
+                <option value="September">September</option>
+                <option value="Oktober">Oktober</option>
+                <option value="November">November</option>
+                <option value="Desember">Desember</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="tahun">Tahun:</label>
+              <input type="text" id="tahun" placeholder="Contoh: 2026" value="2026">
+            </div>
+            <div class="form-group">
+              <label>Pilih Kab/Kota (bisa lebih dari satu):</label>
+              <div class="button-group">
+                <button type="button" class="btn-outline" id="select-all-bulanan">Pilih Semua</button>
+                <button type="button" class="btn-outline" id="reset-bulanan">Reset</button>
+              </div>
+              <div id="cities-bulanan" class="checkbox-grid"></div>
+            </div>
+            <div class="form-group" id="kecamatan-group-bulanan" style="display:none;">
+              <label>Pilih Kecamatan (bisa lebih dari satu):</label>
+              <!-- Hidden input for JS value compatibility -->
+              <input type="text" id="kecamatan-bulanan" style="display:none;">
+              <div class="button-group" style="margin-bottom:6px;margin-top:6px;">
+                <button type="button" class="btn-outline" id="select-all-kecamatan-bulanan">Pilih Semua</button>
+                <button type="button" class="btn-outline" id="reset-kecamatan-bulanan">Reset</button>
+              </div>
+              <div id="kecamatan-checkboxes-bulanan" class="checkbox-grid" style="max-height:200px;overflow-y:auto;">
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="faskes-bulanan">Desa/Faskes:</label>
+              <input type="text" id="faskes-bulanan" placeholder="Contoh: 2001 - KEUDE BAKONGAN/PUSKESMAS LHOONG">
+              <div class="checkbox-inline">
+                <input type="checkbox" id="all-faskes-bulanan">
+                <label for="all-faskes-bulanan">Download semua desa</label>
+              </div>
+              <div id="list-faskes-bulanan" class="desa-list-container"></div>
+              <div id="desa-count-bulanan" class="desa-count" style="display:none;"></div>
+            </div>
+            <div class="form-group">
+              <label for="jenis-laporan-bulanan">Jenis Laporan:</label>
+              <select id="jenis-laporan-bulanan">
+                <option value="" selected>Pilih jenis laporan</option>
+                <option value="rekap">Rekap</option>
+                <option value="detail">Detail</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <div class="checkbox-inline">
+                <input type="checkbox" id="enable-close-delay-bulanan">
+                <label for="enable-close-delay-bulanan">Tambah waktu tunggu sebelum tutup tab</label>
+              </div>
+              <div id="close-delay-panel-bulanan" class="close-delay-panel">
+                <label for="close-delay-bulanan">Durasi (detik):</label>
+                <input type="number" id="close-delay-bulanan" min="5" max="300" value="10"
+                  style="width:80px;margin-left:8px;">
+                <div class="text-muted" style="margin-top:4px;">Tambah jika server lambat. Default: 10 detik.</div>
+              </div>
+            </div>
+            <button type="submit" class="btn-primary">▶ Jalankan Download</button>
+          </form>
+        </div>
+
+        <!-- Tab Download Progress -->
+        <div id="download-content" class="tab-content">
+          <h2 class="section-title">📥 Download Progress</h2>
+          <div class="download-action-bar">
+            <button id="retry-all-btn" type="button" class="btn-retry-all">♻️ Retry Semua Gagal & Progress</button>
+            <button id="clear-done-btn" type="button" class="btn-clear-done">🗑️ Bersihkan yang Selesai</button>
+          </div>
+          <div id="download-progress-list"></div>
+        </div>
+      </div><!-- /.form-section-wrapper -->
     </div><!-- /#form-screen -->
+
+    <!-- Footer -->
+    <div class="footer-info">SIGA Smart Downloader v1.0 — BKKBN Aceh</div>
   </div>
   <script src="popup.js"></script>
 </body>
