@@ -931,14 +931,26 @@ h3 {
 .desa-list-container {
     display: none;
     margin-top: 8px;
-    max-height: 200px;
+    max-height: 240px;
     overflow: auto;
-    border: 1px solid var(--border);
-    padding: 8px;
-    border-radius: var(--radius-sm);
-    background: var(--surface);
+    border: 1.5px solid var(--border);
+    padding: 12px;
+    border-radius: var(--radius-md);
+    background: var(--bg);
     font-size: 12px;
     line-height: 1.6;
+}
+
+.desa-list-container .checkbox-grid {
+    border: none;
+    padding: 0;
+    gap: 6px;
+    max-height: 200px;
+}
+
+.faskes-checkbox label {
+    color: var(--info);
+    font-weight: 500;
 }
 
 /* ── Custom listbox (desa/faskes dropdown) ─────────────── */
