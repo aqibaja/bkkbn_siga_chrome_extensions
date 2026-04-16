@@ -391,183 +391,7 @@ function getSelectedDesaFaskes(tabName) {
   return Array.from(checkboxes).map(cb => ({ desa: cb.value, kec: cb.dataset.kec || '' }));
 }
 
-// Fungsi untuk render dropdown desa/faskes (global)
-function renderDesaDropdown(tabName, cityId, kecamatanValue) {
-  const kecamatanContainer = document.getElementById(`kecamatan-${tabName}`).parentElement;
-  // Hapus dropdown desa/faskes lama jika ada
-  removeDesaDropdown(kecamatanContainer);
-  if (!kecamatanValue) return;
-  const kecName = (kecamatanValue.split(' - ')[1] || '').trim();
-  let desaList = [];
-  if (Array.isArray(wilayahData)) {
-    const kabNum = Number(cityId);
-    desaList = wilayahData
-      .filter(entry => {
-        const kodeKabObj = entry['KODE KABUPATEN'];
-        const kodeKab = kodeKabObj && typeof kodeKabObj === 'object' ? Object.values(kodeKabObj)[0] : kodeKabObj;
-        const namaKec = (entry['NAMA KECAMATAN'] || '').toString().trim();
-        return Number(kodeKab) === kabNum && namaKec.toLowerCase() === kecName.toLowerCase();
-      })
-      .map(entry => `${entry['KODE DESA']} - ${entry['NAMA DESA']}`);
-  }
-  console.log('[desa] renderDesaDropdown', { tabName, cityId, kecName, found: desaList.length });
-  if (desaList.length > 0) {
-    const isBulanan = tabName === 'bulanan';
-    // Show the manual input and rely on our custom listbox (no native datalist)
-    const inputId = isBulanan ? 'faskes-bulanan' : 'desa-tahunan';
-    const inputEl = document.getElementById(inputId);
-    if (inputEl) {
-      // ensure no native datalist is attached
-      inputEl.removeAttribute('list');
-      inputEl.style.display = 'block';
-    }
 
-    // Create a custom listbox under the input so options can be shown even if input already has value.
-    const listboxId = `${isBulanan ? 'faskes' : 'desa'}-listbox-${tabName}`;
-    // remove existing listbox if any
-    const existingListbox = document.getElementById(listboxId);
-    if (existingListbox) existingListbox.remove();
-    const listbox = document.createElement('div');
-    listbox.id = listboxId;
-    listbox.className = 'datalist-listbox';
-    listbox.style.position = 'absolute';
-    listbox.style.zIndex = '9999';
-    listbox.style.background = '#fff';
-    listbox.style.border = '1px solid #ddd';
-    listbox.style.maxHeight = '200px';
-    listbox.style.overflow = 'auto';
-    listbox.style.display = 'none';
-    listbox.style.width = inputEl ? `${inputEl.offsetWidth}px` : '100%';
-    // populate items
-    desaList.forEach(desa => {
-      const item = document.createElement('div');
-      item.className = 'datalist-item';
-      item.textContent = desa;
-      item.style.padding = '6px 10px';
-      item.style.cursor = 'pointer';
-      item.addEventListener('mouseenter', () => item.style.background = '#f0f0f0');
-      item.addEventListener('mouseleave', () => item.style.background = '');
-      item.addEventListener('click', () => {
-        if (inputEl) inputEl.value = desa;
-        listbox.style.display = 'none';
-      });
-      listbox.appendChild(item);
-    });
-    // position listbox right after the input
-    if (inputEl) {
-      const rect = inputEl.getBoundingClientRect();
-      // place relative to container: append to container and rely on flow; adjust later with CSS if needed
-      inputEl.parentElement.style.position = 'relative';
-      listbox.style.width = '100%';
-      // place listbox below the input so it doesn't cover the form
-      listbox.style.left = '0';
-      listbox.style.top = `${inputEl.offsetHeight + 24}px`;
-      listbox.style.boxSizing = 'border-box';
-      listbox.style.borderRadius = '6px';
-      inputEl.parentElement.appendChild(listbox);
-
-      // show list on focus and when user clicks the input
-      inputEl.addEventListener('focus', () => { listbox.style.display = 'block'; });
-      inputEl.addEventListener('click', () => { listbox.style.display = 'block'; });
-      // filter as user types
-      inputEl.addEventListener('input', () => {
-        const v = (inputEl.value || '').toLowerCase();
-        Array.from(listbox.children).forEach(ch => {
-          ch.style.display = ch.textContent.toLowerCase().includes(v) ? 'block' : 'none';
-        });
-      });
-      // hide when clicking outside
-      document.addEventListener('click', function onDocClick(ev) {
-        if (!listbox.contains(ev.target) && ev.target !== inputEl) {
-          listbox.style.display = 'none';
-        }
-      });
-    } else {
-      kecamatanContainer.appendChild(listbox);
-    }
-  }
-}
-
-// Toggle full list container for desa/faskes
-function toggleFullList(tabName, cityId, kecName) {
-  const listContainer = document.getElementById(tabName === 'tahunan' ? 'list-desa-tahunan' : 'list-faskes-bulanan');
-  if (!listContainer) return;
-  if (listContainer.style.display === 'block') {
-    listContainer.style.display = 'none';
-    return;
-  }
-  // build list same as renderDesaDropdown logic
-  let list = [];
-  if (Array.isArray(wilayahData)) {
-    const kabNum = Number(cityId);
-    list = wilayahData
-      .filter(entry => {
-        const kodeKabObj = entry['KODE KABUPATEN'];
-        const kodeKab = kodeKabObj && typeof kodeKabObj === 'object' ? Object.values(kodeKabObj)[0] : kodeKabObj;
-        const namaKec = (entry['NAMA KECAMATAN'] || '').toString().trim();
-        return Number(kodeKab) === kabNum && namaKec.toLowerCase() === (kecName || '').toLowerCase();
-      })
-      .map(entry => `${entry['KODE DESA']} - ${entry['NAMA DESA']}`);
-  }
-  if (list.length > 0) {
-    listContainer.innerHTML = list.map(item => `<div>${item}</div>`).join('');
-    listContainer.style.display = 'block';
-  } else {
-    listContainer.innerHTML = '';
-    listContainer.style.display = 'none';
-  }
-}
-
-function removeDesaDropdown(container) {
-  // remove possible datalists
-  const desaDlist = container.querySelector('datalist[id^="desa-datalist-"]');
-  const faskesDlist = container.querySelector('datalist[id^="faskes-datalist-"]');
-  if (desaDlist) desaDlist.remove();
-  if (faskesDlist) faskesDlist.remove();
-  // remove custom listbox if present
-  const listbox = container.querySelector('.datalist-listbox');
-  if (listbox) listbox.remove();
-  // clear list attribute from inputs
-  const desaInput = container.querySelector('#desa-tahunan');
-  const faskesInput = container.querySelector('#faskes-bulanan');
-  if (desaInput) {
-    desaInput.removeAttribute('list');
-    desaInput.style.display = 'block';
-  }
-  if (faskesInput) {
-    faskesInput.removeAttribute('list');
-    faskesInput.style.display = 'block';
-  }
-}
-
-// Event handler untuk checkbox Semua Desa/Faskes
-function setupAllDesaFaskes(tabName) {
-  const allCheckbox = document.getElementById(tabName === 'tahunan' ? 'all-desa-tahunan' : 'all-faskes-bulanan');
-  const inputField = document.getElementById(tabName === 'tahunan' ? 'desa-tahunan' : 'faskes-bulanan');
-  const listContainer = document.getElementById(tabName === 'tahunan' ? 'list-desa-tahunan' : 'list-faskes-bulanan');
-  if (!allCheckbox || !inputField || !listContainer) return;
-  allCheckbox.addEventListener('change', function () {
-    if (this.checked) {
-      // Hide manual input and render list (if kecamatan selected)
-      inputField.style.display = 'none';
-      renderListDesaFaskes(tabName);
-    } else {
-      listContainer.style.display = 'none';
-      const countEl = document.getElementById(tabName === 'tahunan' ? 'desa-count-tahunan' : 'desa-count-bulanan');
-      if (countEl) countEl.style.display = 'none';
-      // Tampilkan kembali input manual hanya jika 0 atau 1 kecamatan dipilih
-      const selectedKec = getSelectedKecamatan(tabName);
-      if (selectedKec.length <= 1) {
-        inputField.style.display = 'block';
-        inputField.disabled = false;
-        inputField.style.opacity = '';
-      }
-    }
-  });
-}
-
-setupAllDesaFaskes('tahunan');
-setupAllDesaFaskes('bulanan');
 
 // Render daftar kecamatan dari kecamatanData berdasarkan kab/kota terpilih
 function renderKecamatanList(tabName) {
@@ -608,39 +432,7 @@ function setKecamatanInputVisibility(tabName, visible) {
   }
 }
 
-function setDesaFaskesDisabled(tabName, disabled) {
-  const desaInput = document.getElementById(tabName === 'tahunan' ? 'desa-tahunan' : 'faskes-bulanan');
-  const allDesaEl = document.getElementById(tabName === 'tahunan' ? 'all-desa-tahunan' : 'all-faskes-bulanan');
-  if (desaInput) {
-    desaInput.disabled = disabled;
-    desaInput.style.opacity = disabled ? '0.4' : '';
-  }
-  if (allDesaEl) {
-    allDesaEl.disabled = disabled;
-    if (allDesaEl.parentElement) allDesaEl.parentElement.style.opacity = disabled ? '0.4' : '';
-  }
-}
 
-function setupAllKecamatan(tabName) {
-  const allCheckbox = document.getElementById(`all-kecamatan-${tabName}`);
-  const listContainer = document.getElementById(`list-kecamatan-${tabName}`);
-  if (!allCheckbox || !listContainer) return;
-  allCheckbox.addEventListener('change', function () {
-    if (this.checked) {
-      setKecamatanInputVisibility(tabName, false);
-      setDesaFaskesDisabled(tabName, true);
-      renderKecamatanList(tabName);
-    } else {
-      setKecamatanInputVisibility(tabName, true);
-      setDesaFaskesDisabled(tabName, false);
-      listContainer.innerHTML = '';
-      listContainer.style.display = 'none';
-    }
-  });
-}
-
-setupAllKecamatan('tahunan');
-setupAllKecamatan('bulanan');
 
 // Tab switching
 const tabButtons = document.querySelectorAll('.tab-button');
@@ -2193,6 +1985,12 @@ function restoreUserPrefs() {
             if (prefs[`tabel_${tab}`].includes(cb.value)) cb.checked = true;
           });
           syncTabelToUrl(tab);
+        }
+        if (prefs[`desa_${tab}`]?.length) {
+          document.querySelectorAll(`#desa-checkboxes-${tab} input[type="checkbox"]`).forEach(cb => {
+            if (prefs[`desa_${tab}`].includes(cb.value)) cb.checked = true;
+          });
+          syncDesaToUrl(tab);
         }
       });
     }, 100);
