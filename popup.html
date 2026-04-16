@@ -154,16 +154,17 @@
                 <button type="button" class="btn-outline" id="select-all-kecamatan-tahunan">Pilih Semua</button>
                 <button type="button" class="btn-outline" id="reset-kecamatan-tahunan">Reset</button>
               </div>
-              <div id="kecamatan-checkboxes-tahunan" class="checkbox-grid" style="max-height:200px;overflow-y:auto;">
+              <div id="kecamatan-checkboxes-tahunan" class="checkbox-grid" style="max-height:200px;overflow-y:auto;overscroll-behavior:contain;">
               </div>
             </div>
             <div class="form-group" id="desa-selector-tahunan" style="display:none;">
               <label>Pilih Desa/Kel:</label>
+              <input type="text" id="desa-search-tahunan" class="desa-search-input" placeholder="🔍 Ketik nama desa untuk filter..." style="margin-top:6px;">
               <div class="button-group" style="margin-bottom:6px;margin-top: 6px;">
                 <button type="button" class="btn-outline" id="select-all-desa-tahunan">Pilih Semua</button>
                 <button type="button" class="btn-outline" id="reset-desa-tahunan">Reset</button>
               </div>
-              <div id="desa-checkboxes-tahunan" class="checkbox-grid tabel-checkbox-grid"></div>
+              <div id="desa-checkboxes-tahunan" class="checkbox-grid tabel-checkbox-grid" style="max-height:220px;overflow-y:auto;"></div>
               <div id="desa-count-tahunan" class="tabel-count">0 dipilih</div>
             </div>
             <div class="form-group">
@@ -256,16 +257,17 @@
                 <button type="button" class="btn-outline" id="select-all-kecamatan-bulanan">Pilih Semua</button>
                 <button type="button" class="btn-outline" id="reset-kecamatan-bulanan">Reset</button>
               </div>
-              <div id="kecamatan-checkboxes-bulanan" class="checkbox-grid" style="max-height:200px;overflow-y:auto;">
+              <div id="kecamatan-checkboxes-bulanan" class="checkbox-grid" style="max-height:200px;overflow-y:auto;overscroll-behavior:contain;">
               </div>
             </div>
             <div class="form-group" id="desa-selector-bulanan" style="display:none;">
               <label>Pilih Desa/Faskes:</label>
+              <input type="text" id="desa-search-bulanan" class="desa-search-input" placeholder="🔍 Ketik nama desa/faskes untuk filter..." style="margin-top:6px;">
               <div class="button-group" style="margin-bottom:6px;margin-top: 6px;">
                 <button type="button" class="btn-outline" id="select-all-desa-bulanan">Pilih Semua</button>
                 <button type="button" class="btn-outline" id="reset-desa-bulanan">Reset</button>
               </div>
-              <div id="desa-checkboxes-bulanan" class="checkbox-grid tabel-checkbox-grid"></div>
+              <div id="desa-checkboxes-bulanan" class="checkbox-grid tabel-checkbox-grid" style="max-height:220px;overflow-y:auto;"></div>
               <div id="faskes-count-bulanan" class="tabel-count">0 dipilih</div>
             </div>
             <div class="form-group">

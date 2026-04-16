@@ -295,8 +295,10 @@ function renderListDesaFaskes(tabName) {
   const selectorDiv = document.getElementById(`desa-selector-${tabName}`);
   const checkboxesDiv = document.getElementById(`desa-checkboxes-${tabName}`);
   const countEl = document.getElementById(tabName === 'tahunan' ? 'desa-count-tahunan' : 'faskes-count-bulanan');
+  const searchInput = document.getElementById(`desa-search-${tabName}`);
 
   checkboxesDiv.innerHTML = '';
+  if (searchInput) searchInput.value = '';
 
   const checked = document.querySelectorAll(`#cities-${tabName} input[type="checkbox"]:checked`);
   if (checked.length !== 1) { selectorDiv.style.display = 'none'; return; }
@@ -336,6 +338,7 @@ function renderListDesaFaskes(tabName) {
       cb.id = `desa-${tabName}-${idx}`;
       cb.value = desa;
       cb.dataset.kec = kec;
+      cb.dataset.desa = desa.toLowerCase();
       cb.addEventListener('change', () => syncDesaToUrl(tabName));
 
       const lbl = document.createElement('label');
@@ -367,10 +370,91 @@ function renderListDesaFaskes(tabName) {
         syncDesaToUrl(tabName);
       };
     }
+
+    setupDesaSearch(tabName, checkboxesDiv, list.length);
+    setupDragSelectDesa(checkboxesDiv, tabName);
   } else {
     selectorDiv.style.display = 'none';
     if (countEl) countEl.style.display = 'none';
   }
+}
+
+function setupDesaSearch(tabName, checkboxesDiv, totalCount) {
+  const searchInput = document.getElementById(`desa-search-${tabName}`);
+  if (!searchInput) return;
+  searchInput.oninput = () => {
+    const query = searchInput.value.toLowerCase().trim();
+    const items = checkboxesDiv.querySelectorAll('.checkbox-item');
+    let visibleCount = 0;
+    items.forEach(item => {
+      const cb = item.querySelector('input[type="checkbox"]');
+      const desaName = cb ? cb.dataset.desa || '' : '';
+      const match = !query || desaName.includes(query);
+      if (match) {
+        item.classList.remove('desa-filtered');
+        visibleCount++;
+      } else {
+        item.classList.add('desa-filtered');
+      }
+    });
+  };
+}
+
+function setupDragSelectDesa(container, tabName) {
+  let isDragging = false;
+  let wasDragging = false;
+  let dragCheckState = null;
+  let startCb = null;
+
+  container.addEventListener('mousedown', e => {
+    const item = e.target.closest('.checkbox-item');
+    if (!item) return;
+    const cb = item.querySelector('input[type="checkbox"]');
+    if (!cb) return;
+    startCb = cb;
+    isDragging = false;
+    wasDragging = false;
+    dragCheckState = !cb.checked;
+  });
+
+  container.addEventListener('mousemove', e => {
+    if (!startCb || !(e.buttons & 1)) { startCb = null; return; }
+    const item = e.target.closest('.checkbox-item');
+    if (!item) return;
+    const cb = item.querySelector('input[type="checkbox"]');
+    if (!cb) return;
+
+    if (!isDragging) {
+      isDragging = true;
+      wasDragging = true;
+      if (startCb.checked !== dragCheckState) {
+        startCb.checked = dragCheckState;
+        syncDesaToUrl(tabName);
+      }
+    }
+
+    if (cb !== startCb && cb.checked !== dragCheckState) {
+      cb.checked = dragCheckState;
+      syncDesaToUrl(tabName);
+    }
+    e.preventDefault();
+  });
+
+  container.addEventListener('click', e => {
+    if (wasDragging) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    isDragging = false;
+    wasDragging = false;
+    startCb = null;
+    dragCheckState = null;
+  }, true);
+
+  document.addEventListener('mouseup', () => {
+    isDragging = false;
+    startCb = null;
+  });
 }
 
 function syncDesaToUrl(tabName) {
@@ -384,6 +468,24 @@ function syncDesaToUrl(tabName) {
   }
   saveUserPrefs();
 }
+
+function preventScrollPropagation(el) {
+  if (!el) return;
+  el.addEventListener('wheel', (e) => {
+    const { scrollTop, scrollHeight, clientHeight } = el;
+    const atTop = scrollTop === 0;
+    const atBottom = scrollTop + clientHeight >= scrollHeight;
+    if ((atTop && e.deltaY < 0) || (atBottom && e.deltaY > 0)) {
+      e.preventDefault();
+    }
+  }, { passive: false });
+}
+
+['tahunan', 'bulanan'].forEach(tab => {
+  preventScrollPropagation(document.getElementById(`desa-checkboxes-${tab}`));
+  preventScrollPropagation(document.getElementById(`kecamatan-checkboxes-${tab}`));
+  preventScrollPropagation(document.getElementById(`tabel-checkboxes-${tab}`));
+});
 
 function getSelectedDesaFaskes(tabName) {
   const checkboxesDiv = document.getElementById(`desa-checkboxes-${tabName}`);
@@ -1061,8 +1163,8 @@ function setupFormSubmit(formId, tabName) {
       // Buat queue: tiap baris URL + nama kota + desa/faskes jika dipilih dari checkbox
       let queue = [];
       const selectedKecamatan = getSelectedKecamatan(tabName);
-      const selectedDesaFaskes = getSelectedDesaFaskes(tabName);
-      const hasDesaSelected = selectedDesaFaskes.length > 0;
+      let selectedDesaFaskes = getSelectedDesaFaskes(tabName);
+      let hasDesaSelected = selectedDesaFaskes.length > 0;
 
       // Jika user pilih banyak kab/kota, setiap kab/kota dibuka di tab terpisah (mirip banyak url)
       if (selectedCities.length > 1) {
@@ -1225,8 +1327,8 @@ function setupFormSubmit(formId, tabName) {
         return;
       }
 
-      const selectedDesaFaskes = getSelectedDesaFaskes(tabName);
-      const hasDesaSelected = selectedDesaFaskes.length > 0;
+      selectedDesaFaskes = getSelectedDesaFaskes(tabName);
+      hasDesaSelected = selectedDesaFaskes.length > 0;
 
       const data = {
         tab: tabName,
@@ -1554,6 +1656,7 @@ function renderTabelSelector(tabName, submenuId) {
  */
 function setupDragSelect(container, tabName) {
   let isDragging = false;
+  let wasDragging = false;
   let dragCheckState = null;
   let startCb = null;
 
@@ -1564,6 +1667,7 @@ function setupDragSelect(container, tabName) {
     if (!cb) return;
     startCb = cb;
     isDragging = false;
+    wasDragging = false;
     dragCheckState = !cb.checked;
   });
 
@@ -1576,7 +1680,7 @@ function setupDragSelect(container, tabName) {
 
     if (!isDragging) {
       isDragging = true;
-      // Terapkan ke checkbox awal
+      wasDragging = true;
       if (startCb.checked !== dragCheckState) {
         startCb.checked = dragCheckState;
         syncTabelToUrl(tabName);
@@ -1590,13 +1694,13 @@ function setupDragSelect(container, tabName) {
     e.preventDefault();
   });
 
-  // Capture phase: cegah toggle checkbox jika ini hasil drag, bukan klik
   container.addEventListener('click', e => {
-    if (isDragging) {
+    if (wasDragging) {
       e.preventDefault();
       e.stopPropagation();
     }
     isDragging = false;
+    wasDragging = false;
     startCb = null;
     dragCheckState = null;
   }, true);
@@ -1604,7 +1708,6 @@ function setupDragSelect(container, tabName) {
   document.addEventListener('mouseup', () => {
     isDragging = false;
     startCb = null;
-    dragCheckState = null;
   });
 }
 
@@ -1703,6 +1806,20 @@ function applyFieldVisibility(reportId) {
       }
     });
   }
+
+  // Handle 'show' property — tampilkan field tertentu
+  ['tahunan', 'bulanan'].forEach(tab => {
+    const tabConfig = config && config[tab];
+    if (tabConfig && tabConfig.show) {
+      tabConfig.show.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+          const fg = el.closest('.form-group');
+          if (fg) fg.style.display = '';
+        }
+      });
+    }
+  });
 }
 
 // Screen references

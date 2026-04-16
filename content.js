@@ -62,7 +62,7 @@
   }
 
   // Tunggu hingga dropdown control muncul (untuk kasus SPA yang render async)
-  async function waitForDropdown(labelText, fallbackIndex = 0, timeout = 12000, interval = 300) {
+  async function waitForDropdown(labelText, fallbackIndex = 0, timeout = 5000, interval = 200) {
     const start = Date.now();
     let control;
     while (Date.now() - start < timeout) {
@@ -145,7 +145,7 @@
   // Fungsi observer + fallback polling untuk opsi dropdown
   async function waitForDropdownOptions(
     selectorOpt = '.css-yt9ioa-option, .css-1n7v3ny-option, .css-9gakcf-option, .ant-select-item, .ant-select-dropdown-menu-item, .react-select__option, [role="option"]',
-    timeout = 8000
+    timeout = 4000
   ) {
     return new Promise((resolve) => {
       let found = false;
@@ -170,8 +170,8 @@
 
   async function pollingDropdownOptions(
     selectorOpt = '.css-yt9ioa-option, .css-1n7v3ny-option, .css-9gakcf-option, .ant-select-item, .ant-select-dropdown-menu-item, .react-select__option, [role="option"]',
-    timeout = 12000,
-    interval = 200
+    timeout = 4000,
+    interval = 100
   ) {
     const start = Date.now();
     while (Date.now() - start < timeout) {
@@ -467,7 +467,7 @@
 
   console.log('[content] started in tab', tab, 'url', window.location.href, 'hash', window.location.hash);
 
-  async function waitForMonitorState(timeout = 30000, interval = 300) {
+  async function waitForMonitorState(timeout = 3000, interval = 200) {
     const start = Date.now();
     while (Date.now() - start < timeout) {
       const monitorState = await new Promise((resolve) =>
@@ -558,7 +558,7 @@
     console.log(`♻️ Retry ke-${retryCount} untuk kota: ${kota}`);
   }
 
-  await wait(2000);
+  await wait(500);
 
   const isTahunan = storage.periode && /^\d{4}$/.test(storage.periode);
 
@@ -574,7 +574,7 @@
     } else {
       console.error('❌ Dropdown Tahun tidak ditemukan (timeout)');
     }
-    await wait(1000);
+    await wait(300);
   }
 
   // Pilih Periode (tahun untuk tahunan, bulan untuk bulanan)
@@ -609,7 +609,7 @@
   }
 
   // Pilih Tahun (hanya untuk tahunan — mode bulanan sudah dipilih sebelum Periode di atas)
-  await wait(1000);
+  await wait(300);
   if (isTahunan && tahun) {
     const tahunDropdown = await waitForDropdown("Tahun", 1);
     if (tahunDropdown) {
@@ -621,7 +621,7 @@
   }
 
   // Pilih Kota/Kab
-  await wait(1000);
+  await wait(300);
   if (kota) {
     const kotaDropdown = await waitForDropdown("Kab/Kota", isTahunan ? 1 : 2);
     if (!kotaDropdown) {
@@ -650,29 +650,22 @@
     }
     const result = await bukaDanPilihPadaDropdown(kotaDropdown, kota, url, kota, currentIndex, downloadQueue);
     if (result === false) return; // Jangan lanjut
-    await wait(1200);
+    await wait(400);
   } else {
     console.warn("⚠️ Kota tidak dipilih, dilewati.");
   }
 
   // Pilih Kecamatan
-  await wait(1000);
+  await wait(300);
   if (kecamatan) {
     const kecDropdown = await waitForDropdown("Kecamatan", isTahunan ? 2 : 3);
     const result = await bukaDanPilihPadaDropdown(kecDropdown, kecamatan, url, kota, currentIndex, downloadQueue);
     if (result === false) return; // Jangan lanjut
-    await wait(1200);
+    await wait(400);
   }
 
   // Pilih Desa (tahunan, jika ada)
-  // Barulah eksekusi desa
-  // if (desa) {
-  //   const desaDropdown = findDropdownByLabel("Desa/Kel");
-  //   const result = await bukaDanPilihPadaDropdown(desaDropdown, desa);
-  //   if (result === false) return; // Jangan lanjut
-  //   await wait(1200);
-  // }
-  await wait(1000);
+  await wait(300);
   if (desa) {
     const desaDropdown = await waitForDropdown("Desa/Kel", isTahunan ? 3 : 4);
     if (desaDropdown) {
@@ -694,29 +687,29 @@
     }
   }
   // Pilih RW (tahunan, jika ada)
-  await wait(1000);
+  await wait(300);
   if (rw) {
     const rwDropdown = await waitForDropdown("RW", isTahunan ? 4 : 5);
     const result = await bukaDanPilihPadaDropdown(rwDropdown, rw, url, kota, currentIndex, downloadQueue);
     if (result === false) return; // Jangan lanjut
-    await wait(1200);
+    await wait(400);
   }
   // Pilih Sasaran (tahunan, jika ada)
-  await wait(1000);
+  await wait(300);
   if (sasaran) {
     const sasaranDropdown = await waitForDropdown("Kelompok Sasaran", isTahunan ? 5 : 6);
     const result = await bukaDanPilihPadaDropdown(sasaranDropdown, sasaran, url, kota, currentIndex, downloadQueue);
     if (result === false) return; // Jangan lanjut
-    await wait(1200);
+    await wait(400);
   }
 
   // Pilih Faskes (bulanan, jika ada)
-  await wait(1000);
+  await wait(300);
   if (faskes) {
     const faskesDropdown = await waitForDropdown("Faskes", 4);
     if (faskesDropdown) await bukaDanPilihPadaDropdown(faskesDropdown, faskes, url, kota, currentIndex, downloadQueue);
     else console.error('❌ Dropdown Faskes tidak ditemukan');
-    await wait(1200);
+    await wait(400);
   }
 
   // Klik tombol cetak excel
