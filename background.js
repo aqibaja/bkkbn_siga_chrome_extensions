@@ -166,10 +166,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
 
         chrome.tabs.remove(tabId, () => {
-            // Matikan mode rename setelah proses selesai
-            chrome.storage.local.set({ renameEnabled: false }, () => {
-                sendResponse({ success: true });
-            });
+            sendResponse({ success: true });
         });
 
         return true;
@@ -227,9 +224,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 if (tabId) chrome.tabs.remove(tabId);
             });
 
-            chrome.storage.local.set({ renameEnabled: false }, () =>
-                sendResponse({ success: true })
-            );
+            sendResponse({ success: true });
         });
 
         return true;
@@ -256,7 +251,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 // Cleanup auto data kalau tab automation ditutup
 chrome.tabs.onRemoved.addListener((tabId) => {
-    chrome.storage.local.remove([`auto_${tabId}`]);
+    const autoKey = `auto_${tabId}`;
+    chrome.storage.local.get([autoKey], (res) => {
+        if (res[autoKey]) {
+            chrome.storage.local.remove([autoKey], () => {
+                chrome.storage.local.get(null, (data) => {
+                    const autoKeys = Object.keys(data).filter((k) => k.startsWith("auto_"));
+                    if (autoKeys.length === 0) {
+                        chrome.storage.local.set({
+                            renameEnabled: false,
+                            renameContext: null,
+                            renameQueue: [],
+                            pendingRenameList: []
+                        });
+                    }
+                });
+            });
+        }
+    });
 });
 
 // =========================
@@ -363,76 +375,71 @@ chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
     };
 
     const fallbackRename = (res) => {
-        if (!res.renameEnabled && (!Array.isArray(res.renameQueue) || res.renameQueue.length === 0) && !res.renameContext) {
-            console.warn('[rename] no context available, fallback to default', { downloadItem });
-            suggest({ filename: downloadItem.filename, conflictAction: 'uniquify' });
-            return;
+        const processNonAutoTab = () => {
+            if (!res.renameEnabled) {
+                console.warn('[rename] renameEnabled is false, skipping fallback rename', { downloadItem });
+                suggest({ filename: downloadItem.filename, conflictAction: 'uniquify' });
+                return;
+            }
+
+            dequeuePendingRename((pendingCtx, pendingQueue) => {
+                if (pendingCtx) {
+                    console.log('[rename] pending list context used', { pendingCtx, pendingRemaining: pendingQueue.length });
+                    buildFileName(pendingCtx);
+                    return;
+                }
+
+                if (Array.isArray(res.renameQueue) && res.renameQueue.length > 0) {
+                    const nextCtx = res.renameQueue.shift();
+                    console.log('[rename] fallback queue context', nextCtx);
+                    chrome.storage.local.set({
+                        renameQueue: res.renameQueue,
+                        renameContext: nextCtx,
+                        renameEnabled: res.renameQueue.length > 0,
+                    }, () => buildFileName(nextCtx));
+                    return;
+                }
+
+                console.log('[rename] fallback global context', res.renameContext);
+                if (res.renameContext) {
+                    buildFileName(res.renameContext);
+                } else {
+                    suggest({ filename: downloadItem.filename, conflictAction: 'uniquify' });
+                }
+            });
+        };
+
+        if (typeof downloadItem.tabId === 'number' && downloadItem.tabId >= 0) {
+            const tabKey = `auto_${downloadItem.tabId}`;
+            console.log('[rename] checking tab auto context', { tabKey });
+            chrome.storage.local.get([tabKey], (tabRes) => {
+                const autoData = tabRes[tabKey];
+                if (autoData) {
+                    const queueItem = Array.isArray(autoData.downloadQueue) ? autoData.downloadQueue[autoData.currentIndex] : null;
+                    const context = {
+                        periode: autoData.periode,
+                        tahun: autoData.tahun,
+                        kab: queueItem?.kota || autoData.kab || '',
+                        kec: autoData.kecamatan || autoData.kec || '',
+                        faskes: queueItem?.faskes || autoData.faskes || '',
+                        desa: queueItem?.desa || autoData.desa || '',
+                        kabCode: queueItem?.kabCode || autoData.kabCode || '',
+                        kecCode: queueItem?.kecCode || autoData.kecCode || '',
+                        desaCode: queueItem?.desaCode || autoData.desaCode || '',
+                        menu: autoData.menu || '',
+                        submenu: autoData.submenu || '',
+                        sasaran: autoData.sasaran || ''
+                    };
+                    console.log('[rename] tab context applied', { tabKey, context });
+                    buildFileName(context);
+                    return;
+                }
+                
+                processNonAutoTab();
+            });
+        } else {
+            processNonAutoTab();
         }
-
-        dequeuePendingRename((pendingCtx, pendingQueue) => {
-            if (pendingCtx) {
-                console.log('[rename] pending list context used', { pendingCtx, pendingRemaining: pendingQueue.length });
-                buildFileName(pendingCtx);
-                return;
-            }
-
-            if (typeof downloadItem.tabId === 'number' && downloadItem.tabId >= 0) {
-                const tabKey = `auto_${downloadItem.tabId}`;
-                console.log('[rename] checking tab auto context', { tabKey });
-                chrome.storage.local.get([tabKey], (tabRes) => {
-                    const autoData = tabRes[tabKey];
-                    if (autoData) {
-                        const queueItem = Array.isArray(autoData.downloadQueue) ? autoData.downloadQueue[autoData.currentIndex] : null;
-                        const context = {
-                            periode: autoData.periode,
-                            tahun: autoData.tahun,
-                            kab: queueItem?.kota || autoData.kab || '',
-                            kec: autoData.kecamatan || autoData.kec || '',
-                            faskes: queueItem?.faskes || autoData.faskes || '',
-                            desa: queueItem?.desa || autoData.desa || '',
-                            kabCode: queueItem?.kabCode || autoData.kabCode || '',
-                            kecCode: queueItem?.kecCode || autoData.kecCode || '',
-                            desaCode: queueItem?.desaCode || autoData.desaCode || '',
-                            menu: autoData.menu || '',
-                            submenu: autoData.submenu || '',
-                            sasaran: autoData.sasaran || ''
-                        };
-                        console.log('[rename] tab context applied', { tabKey, context });
-                        buildFileName(context);
-                        return;
-                    }
-
-                    if (Array.isArray(res.renameQueue) && res.renameQueue.length > 0) {
-                        const nextCtx = res.renameQueue.shift();
-                        console.log('[rename] fallback queue (tab-missing) context', nextCtx);
-                        chrome.storage.local.set({
-                            renameQueue: res.renameQueue,
-                            renameContext: nextCtx,
-                            renameEnabled: res.renameQueue.length > 0,
-                        }, () => buildFileName(nextCtx));
-                        return;
-                    }
-
-                    console.log('[rename] fallback global context', res.renameContext);
-                    buildFileName(res.renameContext || null);
-                });
-                return;
-            }
-
-            if (Array.isArray(res.renameQueue) && res.renameQueue.length > 0) {
-                const nextCtx = res.renameQueue.shift();
-                console.log('[rename] fallback queue (no tabId) context', nextCtx);
-                chrome.storage.local.set({
-                    renameQueue: res.renameQueue,
-                    renameContext: nextCtx,
-                    renameEnabled: res.renameQueue.length > 0,
-                }, () => buildFileName(nextCtx));
-                return;
-            }
-
-            console.log('[rename] fallback global context', res.renameContext);
-            buildFileName(res.renameContext || null);
-        });
     };
 
     const tryBlobContext = (attempts) => {
