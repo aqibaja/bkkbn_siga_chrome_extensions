@@ -28,6 +28,15 @@
         "https://newsiga-siga.bkkbn.go.id/*"
       ],
       "js": [
+        "anti_sleep.js"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://newsiga-siga.bkkbn.go.id/*"
+      ],
+      "js": [
         "content.js"
       ],
       "run_at": "document_idle"

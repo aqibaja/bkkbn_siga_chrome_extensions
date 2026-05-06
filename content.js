@@ -1,4 +1,6 @@
 (async () => {
+  // Anti-sleep sekarang dihandle oleh anti_sleep.js di document_start
+
   // Helper: Wait beberapa ms
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -61,7 +63,6 @@
     return nodes[fallbackIndex] || nodes[0] || null;
   }
 
-  // Tunggu hingga dropdown control muncul (untuk kasus SPA yang render async)
   async function waitForDropdown(labelText, fallbackIndex = 0, timeout = 5000, interval = 200) {
     const start = Date.now();
     let control;
@@ -71,6 +72,23 @@
       await wait(interval);
     }
     return null; // biarkan caller yang handle fail
+  }
+
+  // Tunggu dropdown spesifik berdasarkan urutan (index) di DOM, lebih aman dari salah label
+  async function waitForDropdownByIndex(index, timeout = 5000, interval = 200) {
+    const start = Date.now();
+    let tries = 0;
+    while (Date.now() - start < timeout) {
+      const nodes = document.querySelectorAll('.css-yk16xz-control, div[role="combobox"], .ant-select-selector');
+      if (nodes.length > index) {
+        return nodes[index];
+      }
+      if (tries++ % 5 === 0) {
+         chrome.runtime.sendMessage({ action: "wakeMeUp" }).catch(() => {});
+      }
+      await wait(interval);
+    }
+    return null;
   }
 
   // Buat hash unik dari URL (bisa pakai base64 atau hanya ambil bagian unik URL)
@@ -154,14 +172,20 @@
         if (options.length > 0) {
           found = true;
           observer.disconnect();
+          clearInterval(wakeTimer);
           resolve(options);
         }
       });
 
       observer.observe(document.body, { childList: true, subtree: true });
 
+      const wakeTimer = setInterval(() => {
+         chrome.runtime.sendMessage({ action: "wakeMeUp" }).catch(() => {});
+      }, 800);
+
       setTimeout(() => {
         observer.disconnect();
+        clearInterval(wakeTimer);
         // fallback: resolve empty options agar caller tidak exception
         resolve(document.querySelectorAll(selectorOpt));
       }, timeout);
@@ -204,10 +228,13 @@
 
     await waitForDropdownOptions();
 
-    // Poll opsi dengan fuzzy match
-    const maxTries = 30;
+    // Poll opsi dengan fuzzy match (tingkatkan maxTries menjadi 150 untuk antisipasi server SIGA yang lambat)
+    const maxTries = 150;
     let opsi = null;
     for (let tries = 0; tries < maxTries; tries++) {
+      if (tries % 5 === 0) {
+         chrome.runtime.sendMessage({ action: "wakeMeUp" }).catch(() => {});
+      }
       const allOptions = [...document.querySelectorAll('.css-yt9ioa-option, .css-1n7v3ny-option, .css-9gakcf-option, .ant-select-item, .ant-select-dropdown-menu-item, .react-select__option, [role="option"]')];
       opsi = allOptions.find(el => {
         const textOption = el.textContent.trim().replace(/\u2013|\u2014/g, '-').toLowerCase();
@@ -550,8 +577,20 @@
   }
 
   // Proses utama automation per queue
-  const { kota, url } = downloadQueue[currentIndex];
+  const { kota, url, renameContext } = downloadQueue[currentIndex];
   console.log(`🚀 Memproses kota ${currentIndex + 1}/${downloadQueue.length}: ${kota} - ${url}`);
+  
+  // Set context rename untuk file yang akan didownload ini
+  if (renameContext) {
+    chrome.runtime.sendMessage({ action: "setRenameContext", payload: renameContext });
+  }
+
+  // Override variabel global dengan variabel dari item spesifik saat ini
+  const itemKecamatan = downloadQueue[currentIndex].kecamatan || kecamatan;
+  const itemDesa = downloadQueue[currentIndex].desa || desa;
+  const itemRw = downloadQueue[currentIndex].rw || rw;
+  const itemSasaran = downloadQueue[currentIndex].sasaran || sasaran;
+  const itemFaskes = downloadQueue[currentIndex].faskes || faskes;
 
   // Jika retry, log info
   if (retryCount > 0) {
@@ -657,58 +696,59 @@
 
   // Pilih Kecamatan
   await wait(300);
-  if (kecamatan) {
+  if (itemKecamatan) {
     const kecDropdown = await waitForDropdown("Kecamatan", isTahunan ? 2 : 3);
-    const result = await bukaDanPilihPadaDropdown(kecDropdown, kecamatan, url, kota, currentIndex, downloadQueue);
+    const result = await bukaDanPilihPadaDropdown(kecDropdown, itemKecamatan, url, kota, currentIndex, downloadQueue);
     if (result === false) return; // Jangan lanjut
     await wait(400);
   }
 
-  // Pilih Desa (tahunan, jika ada)
+  // Pilih Desa / Faskes (gabungan untuk mengatasi inkonsistensi label di SIGA)
   await wait(300);
-  if (desa) {
-    const desaDropdown = await waitForDropdown("Desa/Kel", isTahunan ? 3 : 4);
-    if (desaDropdown) {
-      desaDropdown.scrollIntoView();
-      // PATCH PENTING: klik hingga benar-benar membuka opsi Desa
-      desaDropdown.click();
-      await wait(400);
-      // Debug sebelum select opsi, ambil snapshot DOM setelah klik
-      console.log('DEBUG - OPSI DESA READY:',
-        [...document.querySelectorAll('.css-yt9ioa-option, .css-1n7v3ny-option, .css-9gakcf-option')]
-          .map(el => el.textContent.trim())
-      );
-      // Baru lakukan pemilihan dengan fuzzy
-      const result = await bukaDanPilihPadaDropdown(desaDropdown, desa, url, kota, currentIndex, downloadQueue);
-      if (result === false) return;
+  const itemDesaOrFaskes = downloadQueue[currentIndex].desa || downloadQueue[currentIndex].faskes || desa || faskes;
+  console.log(`[DEBUG] currentIndex = ${currentIndex}, itemDesaOrFaskes =`, itemDesaOrFaskes, 'queue item =', downloadQueue[currentIndex]);
+
+  if (itemDesaOrFaskes) {
+    // SIGA sering salah pasang label "Kecamatan / Desa" sehingga pencarian by Text meleset ke Kecamatan lagi.
+    // Solusi pasti: gunakan index pasti (4 untuk Bulanan, 3 untuk Tahunan jika tanpa faskes).
+    const dropdownIndex = isTahunan ? 3 : 4;
+    let targetDropdown = await waitForDropdownByIndex(dropdownIndex, 10000); // tunggu hingga 10 detik untuk load desa
+    
+    if (targetDropdown) {
+      console.log(`[DEBUG] Dropdown target ditemukan pada index ${dropdownIndex}!`, targetDropdown);
+      const result = await bukaDanPilihPadaDropdown(targetDropdown, itemDesaOrFaskes, url, kota, currentIndex, downloadQueue);
+      if (result === false) {
+        console.error(`[DEBUG] bukaDanPilihPadaDropdown mengembalikan false untuk '${itemDesaOrFaskes}'`);
+        return;
+      }
     } else {
-      alert("❌ Dropdown Desa/Kel tidak ditemukan. Proses dibatalkan.");
-      throw new Error("Dropdown DesaKel tidak ditemukan");
+      console.error(`[FATAL] Dropdown Desa/Kel, Faskes, atau Desa tidak ditemukan di DOM. Lanjut tanpa memilih desa.`);
+      alert(`Peringatan: Dropdown untuk memilih Desa/Faskes tidak ditemukan. Ekstensi terpaksa melewatinya. Periksa konsol untuk detail.`);
     }
+    await wait(400);
+  } else {
+    console.log(`[DEBUG] itemDesaOrFaskes KOSONG, jadi ekstensi tidak mencoba memilih desa.`);
   }
+
   // Pilih RW (tahunan, jika ada)
   await wait(300);
-  if (rw) {
+  if (itemRw) {
     const rwDropdown = await waitForDropdown("RW", isTahunan ? 4 : 5);
-    const result = await bukaDanPilihPadaDropdown(rwDropdown, rw, url, kota, currentIndex, downloadQueue);
-    if (result === false) return; // Jangan lanjut
-    await wait(400);
-  }
-  // Pilih Sasaran (tahunan, jika ada)
-  await wait(300);
-  if (sasaran) {
-    const sasaranDropdown = await waitForDropdown("Kelompok Sasaran", isTahunan ? 5 : 6);
-    const result = await bukaDanPilihPadaDropdown(sasaranDropdown, sasaran, url, kota, currentIndex, downloadQueue);
-    if (result === false) return; // Jangan lanjut
+    if (rwDropdown) {
+      const result = await bukaDanPilihPadaDropdown(rwDropdown, itemRw, url, kota, currentIndex, downloadQueue);
+      if (result === false) return;
+    }
     await wait(400);
   }
 
-  // Pilih Faskes (bulanan, jika ada)
+  // Pilih Sasaran (tahunan, jika ada)
   await wait(300);
-  if (faskes) {
-    const faskesDropdown = await waitForDropdown("Faskes", 4);
-    if (faskesDropdown) await bukaDanPilihPadaDropdown(faskesDropdown, faskes, url, kota, currentIndex, downloadQueue);
-    else console.error('❌ Dropdown Faskes tidak ditemukan');
+  if (itemSasaran) {
+    const sasaranDropdown = await waitForDropdown("Kelompok Sasaran", isTahunan ? 5 : 6);
+    if (sasaranDropdown) {
+      const result = await bukaDanPilihPadaDropdown(sasaranDropdown, itemSasaran, url, kota, currentIndex, downloadQueue);
+      if (result === false) return;
+    }
     await wait(400);
   }
 
@@ -730,97 +770,117 @@
       return m ? m[1] : '';
     };
 
-    // Try to detect blob URL created by the page and register rename payload per-blob
-    (function tryRegisterBlob() {
-      const kab = (kota || '').toString().replace(/^\d+\s*-\s*/, '').trim();
-      const kec = storage.kecamatan || '';
-      const desa = (downloadQueue[currentIndex] && downloadQueue[currentIndex].desa) || storage.desa || '';
-      const payload = {
-        periode: storage.periode,
-        tahun: storage.tahun,
-        kab,
-        kabCode: storage.kabCode || extractNumericCode(kota),
-        jenisLaporan: storage.jenisLaporan || '',
-        kec,
-        kecCode: storage.kecCode || extractNumericCode(kec),
-        faskes: storage.faskes || '',
-        desa,
-        desaCode: storage.desaCode || extractNumericCode(desa),
-        rw: storage.rw || '',
-        menu: storage.menu || '',
-        submenu: storage.submenu || '',
-        sasaran: storage.sasaran || (downloadQueue[currentIndex] && downloadQueue[currentIndex].sasaran) || ''
-      };
-
-      const registerBlobUrl = (blobUrl) => {
-        if (!blobUrl || typeof blobUrl !== 'string' || !blobUrl.startsWith('blob:')) return;
-        try {
-          chrome.runtime.sendMessage({ action: 'registerBlobRename', blobUrl, payload }, (resp) => {
-            console.log('registerBlobRename resp', resp, 'for', blobUrl, payload.desa);
-          });
-        } catch (e) {
-          console.warn('Failed to register blob rename', e);
-        }
-      };
-
-      const onMessage = (event) => {
-        if (event.source !== window || !event.data || event.data.type !== 'SIGA_EXCEL_DOWNLOADER_BLOB') return;
-        registerBlobUrl(event.data.blobUrl);
-      };
-
-      window.addEventListener('message', onMessage);
-
-      const selectors = ['a[href^="blob:"]', 'a[download][href^="blob:"]', 'iframe[src^="blob:"]', 'source[src^="blob:"]', 'a[href*="blob:"]'];
-      const timeoutMs = 15000;
-
-      const scanAndRegister = () => {
-        const nodes = document.querySelectorAll(selectors.join(','));
-        const blobs = [...nodes].map(el => el.href || el.src).filter(Boolean);
-        if (blobs.length > 0) {
-          const blobUrl = blobs[blobs.length - 1];
-          registerBlobUrl(blobUrl);
-          return true;
-        }
-        return false;
-      };
-
-      const injectBlobHook = () => {
-        try {
-          const script = document.createElement('script');
-          script.src = chrome.runtime.getURL('injected_blob_hook.js');
-          script.onload = () => script.remove();
-          script.onerror = () => {
-            console.warn('Failed to inject blob hook script (CSP)');
-            script.remove();
+    // Function to wait for blob URL creation by the page
+    const waitForBlob = () => {
+      return new Promise((resolve) => {
+        let payload = {};
+        if (downloadQueue[currentIndex] && downloadQueue[currentIndex].renameContext) {
+          payload = downloadQueue[currentIndex].renameContext;
+        } else {
+          const kab = (kota || '').toString().replace(/^\d+\s*-\s*/, '').trim();
+          const kec = storage.kecamatan || '';
+          const desa = (downloadQueue[currentIndex] && downloadQueue[currentIndex].desa) || storage.desa || '';
+          payload = {
+            periode: storage.periode,
+            tahun: storage.tahun,
+            kab,
+            kabCode: storage.kabCode || extractNumericCode(kota),
+            jenisLaporan: storage.jenisLaporan || '',
+            kec,
+            kecCode: storage.kecCode || extractNumericCode(kec),
+            faskes: storage.faskes || '',
+            desa,
+            desaCode: storage.desaCode || extractNumericCode(desa),
+            rw: storage.rw || '',
+            menu: storage.menu || '',
+            submenu: storage.submenu || '',
+            sasaran: storage.sasaran || (downloadQueue[currentIndex] && downloadQueue[currentIndex].sasaran) || ''
           };
-          (document.head || document.documentElement).appendChild(script);
-        } catch (e) {
-          console.warn('Failed to inject blob hook (exception)', e);
         }
-      };
 
-      injectBlobHook();
+        let timeoutId;
 
-      if (scanAndRegister()) {
-        window.removeEventListener('message', onMessage);
-        return;
-      }
+        const registerBlobUrl = (blobUrl) => {
+          if (!blobUrl || typeof blobUrl !== 'string' || !blobUrl.startsWith('blob:')) return;
+          try {
+            chrome.runtime.sendMessage({ action: 'registerBlobRename', blobUrl, payload }, (resp) => {
+              console.log('registerBlobRename resp', resp, 'for', blobUrl, payload.desa);
+            });
+            clearTimeout(timeoutId);
+            resolve(true);
+          } catch (e) {
+            console.warn('Failed to register blob rename', e);
+            clearTimeout(timeoutId);
+            resolve(false);
+          }
+        };
 
-      // Otherwise observe DOM mutations for dynamically injected blob links
-      const observer = new MutationObserver(() => {
+        const onMessage = (event) => {
+          if (event.source !== window || !event.data || event.data.type !== 'SIGA_EXCEL_DOWNLOADER_BLOB') return;
+          registerBlobUrl(event.data.blobUrl);
+          clearTimeout(timeoutId);
+          resolve(true);
+        };
+
+        window.addEventListener('message', onMessage);
+
+        const selectors = ['a[href^="blob:"]', 'a[download][href^="blob:"]', 'iframe[src^="blob:"]', 'source[src^="blob:"]', 'a[href*="blob:"]'];
+        const timeoutMs = 30000; // Wait up to 30 seconds for the download to start
+
+        const scanAndRegister = () => {
+          const nodes = document.querySelectorAll(selectors.join(','));
+          const blobs = [...nodes].map(el => el.href || el.src).filter(Boolean);
+          if (blobs.length > 0) {
+            const blobUrl = blobs[blobs.length - 1];
+            registerBlobUrl(blobUrl);
+            return true;
+          }
+          return false;
+        };
+
+        const injectBlobHook = () => {
+          try {
+            const script = document.createElement('script');
+            script.src = chrome.runtime.getURL('injected_blob_hook.js');
+            script.onload = () => script.remove();
+            script.onerror = () => {
+              console.warn('Failed to inject blob hook script (CSP)');
+              script.remove();
+            };
+            (document.head || document.documentElement).appendChild(script);
+          } catch (e) {
+            console.warn('Failed to inject blob hook (exception)', e);
+          }
+        };
+
+        injectBlobHook();
+
         if (scanAndRegister()) {
-          observer.disconnect();
           window.removeEventListener('message', onMessage);
+          return;
         }
-      });
-      observer.observe(document.body, { childList: true, subtree: true });
 
-      // Stop observing after timeout
-      setTimeout(() => {
-        try { observer.disconnect(); } catch (e) { }
-        window.removeEventListener('message', onMessage);
-      }, timeoutMs);
-    })();
+        // Otherwise observe DOM mutations for dynamically injected blob links
+        const observer = new MutationObserver(() => {
+          if (scanAndRegister()) {
+            observer.disconnect();
+            window.removeEventListener('message', onMessage);
+          }
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+
+        // Stop observing after timeout and resolve anyway to prevent getting stuck
+        timeoutId = setTimeout(() => {
+          try { observer.disconnect(); } catch (e) { }
+          window.removeEventListener('message', onMessage);
+          console.warn("⏳ Timeout menunggu file download. Lanjut ke proses berikutnya...");
+          resolve(false);
+        }, timeoutMs);
+      });
+    };
+
+    // Start waiting for the blob immediately after clicking Cetak Excel
+    const blobPromise = waitForBlob();
 
     if (jenisLaporan) {
       await handlePopup(jenisLaporan, url, kota, downloadQueue, currentIndex);
@@ -844,21 +904,29 @@
         chrome.runtime.sendMessage({ action: "refresh_download_status" });
       });
     }
+
+    console.log("⏳ Menunggu proses pembuatan Excel oleh web...");
+    await blobPromise;
+    console.log("✅ File terdeteksi, bersiap untuk lanjut...");
+    
+    // Safety buffer to allow Chrome's download manager to capture and save the blob completely
+    await wait(3000);
+
   } else {
     console.error("❌ Tombol Cetak Excel tidak ditemukan");
   }
 
   // Next queue automation
-  try {
-    const nextIndex = currentIndex + 1;
+    try {
+      const nextIndex = currentIndex + 1;
     // Reset retry count saat pindah ke item berikutnya
     await chrome.storage.local.set({ [key]: { ...storage, currentIndex: nextIndex, retryCount: 0 } });
     const next = downloadQueue[nextIndex];
     if (next) {
-      console.log("⏳ Menunggu sebelum lanjut ke kota berikutnya...");
+      console.log("⏳ Lanjut ke desa/kota berikutnya...");
       setTimeout(() => {
         chrome.runtime.sendMessage({ action: "navigateAndReload", url: next.url });
-      }, 1000);
+      }, 500);
     } else {
       // Cek status akhir di storage sebelum memutuskan menutup tab
       const finalHash = getUrlHash(url);

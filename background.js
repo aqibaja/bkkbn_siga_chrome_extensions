@@ -78,6 +78,27 @@ function dequeuePendingRename(callback) {
 // =========================
 // Message handler (satu saja)
 // =========================
+let isWakingUp = false;
+let wakeUpQueue = [];
+
+async function processWakeUpQueue() {
+    if (isWakingUp || wakeUpQueue.length === 0) return;
+    isWakingUp = true;
+    
+    const tabId = wakeUpQueue.shift();
+    try {
+        // Pindah tab agar tab yang freeze bisa merender (anti-sleep fallback)
+        await chrome.tabs.update(tabId, { active: true });
+        // Biarkan tab aktif selama 800ms agar React sempat menggambar dropdown
+        await new Promise(r => setTimeout(r, 800));
+    } catch(e) {}
+    
+    isWakingUp = false;
+    if (wakeUpQueue.length > 0) {
+        processWakeUpQueue();
+    }
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // 1) Simpan context rename dari popup
     if (message.action === "setRenameContext") {
@@ -85,6 +106,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         enqueueRenameContext(message.payload || {});
         sendResponse({ ok: true });
         return true;
+    }
+
+    // 1.5) Anti-Sleep / Auto Pindah Tab
+    if (message.action === "wakeMeUp" && sender.tab) {
+        if (!wakeUpQueue.includes(sender.tab.id)) {
+            wakeUpQueue.push(sender.tab.id);
+            processWakeUpQueue();
+        }
+        sendResponse({ ok: true });
+        return;
     }
 
     // 2) Start automation
@@ -230,13 +261,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true;
     }
 
-    // default
-    sendResponse({ ok: false, error: "unknown action" });
-    return true;
-});
-
-// Allow popup/content to register a rename payload specific to a blob URL
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === 'registerBlobRename') {
         const { blobUrl, payload } = message;
         if (!blobUrl || !payload) { sendResponse({ ok: false }); return; }
@@ -246,7 +270,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         });
         return true;
     }
-    return false;
+
+    // default
+    sendResponse({ ok: false, error: "unknown action" });
+    return true;
 });
 
 // Cleanup auto data kalau tab automation ditutup
@@ -416,7 +443,7 @@ chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
                 const autoData = tabRes[tabKey];
                 if (autoData) {
                     const queueItem = Array.isArray(autoData.downloadQueue) ? autoData.downloadQueue[autoData.currentIndex] : null;
-                    const context = {
+                    const context = (queueItem && queueItem.renameContext) ? queueItem.renameContext : {
                         periode: autoData.periode,
                         tahun: autoData.tahun,
                         kab: queueItem?.kota || autoData.kab || '',

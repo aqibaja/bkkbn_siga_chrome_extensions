@@ -866,35 +866,75 @@ function switchToDownloadTab() {
   renderDownloadTab();
 }
 
-function initializeDownloadProgress(downloadQueue) {
-  // Buat entry progress per item di queue (agar banyak tab/entry per URL didukung)
-  const toSet = {};
-  const keys = [];
-  let idxCounter = 0;
-  downloadQueue.forEach((item, i) => {
-    const urlHash = safeUrlHash(item.url);
-    const key = `tabdownload_${urlHash}_${i}_${Date.now()}`;
-    keys.push(key);
-    const firstFile = item.kota || item.desa || "Memulai...";
-    toSet[key] = {
-      url: item.url,
-      status: "progress",
-      totalFiles: 1,
-      filesCompleted: 0,
-      fileAkhir: firstFile,
-      urlIndex: idxCounter++,
-      // keep kota/kecamatan/desa/faskes for display in progress UI
-      kota: item.kota || '',
-      kecamatan: item.kecamatan || '',
-      desa: item.desa || '',
-      faskes: item.faskes || ''
-    };
-  });
+function initializeDownloadProgress(downloadQueue, mode = 'parallel') {
   return new Promise(resolve => {
-    chrome.storage.local.set(toSet, () => {
-      renderDownloadTab();
-      resolve(keys);
-    });
+    const toSet = {};
+    
+    if (mode === 'sequential') {
+      // Group by URL + Kab + Kec
+      const byGroup = {};
+      downloadQueue.forEach(item => {
+        const groupKey = `${item.url}_${item.kota || ''}_${item.kecamatan || ''}`;
+        if (!byGroup[groupKey]) byGroup[groupKey] = [];
+        byGroup[groupKey].push(item);
+      });
+      
+      let idxCounter = 0;
+      const keysMap = {};
+      
+      Object.keys(byGroup).forEach((groupKey, i) => {
+        const urlHash = safeUrlHash(groupKey);
+        const key = `tabdownload_${urlHash}_seq_${Date.now()}_${i}`;
+        keysMap[groupKey] = key;
+        const queueForUrl = byGroup[groupKey];
+        const firstItem = queueForUrl[0];
+        const firstFile = firstItem.desa || firstItem.kecamatan || firstItem.kota || "Memulai...";
+        
+        toSet[key] = {
+          url: firstItem.url,
+          status: "progress",
+          totalFiles: queueForUrl.length,
+          filesCompleted: 0,
+          fileAkhir: firstFile,
+          urlIndex: idxCounter++,
+          kota: firstItem.kota || '',
+          kecamatan: firstItem.kecamatan || '',
+          desa: firstItem.desa || '',
+          faskes: firstItem.faskes || ''
+        };
+      });
+      chrome.storage.local.set(toSet, () => {
+        renderDownloadTab();
+        resolve(keysMap); // returns an object mapping url to its progress key
+      });
+    } else {
+      // Buat entry progress per item di queue (agar banyak tab/entry per URL didukung)
+      const keys = [];
+      let idxCounter = 0;
+      downloadQueue.forEach((item, i) => {
+        const urlHash = safeUrlHash(item.url);
+        const key = `tabdownload_${urlHash}_${i}_${Date.now()}`;
+        keys.push(key);
+        const firstFile = item.kota || item.desa || "Memulai...";
+        toSet[key] = {
+          url: item.url,
+          status: "progress",
+          totalFiles: 1,
+          filesCompleted: 0,
+          fileAkhir: firstFile,
+          urlIndex: idxCounter++,
+          // keep kota/kecamatan/desa/faskes for display in progress UI
+          kota: item.kota || '',
+          kecamatan: item.kecamatan || '',
+          desa: item.desa || '',
+          faskes: item.faskes || ''
+        };
+      });
+      chrome.storage.local.set(toSet, () => {
+        renderDownloadTab();
+        resolve(keys); // returns an array of keys
+      });
+    }
   });
 }
 
@@ -1250,15 +1290,128 @@ function setupFormSubmit(formId, tabName) {
         }
       }
 
-      // Tambahkan sasaran/catin/baduta/bumil/pascapersalin untuk setiap URL jika tersedia dari URL
-      queue = queue.map(item => ({
-        ...item,
-        sasaran: item.sasaran || detectSasaranFromUrl(item.url)
-      }));
+      // Tambahkan sasaran/catin/baduta/bumil/pascapersalin dan renameContext untuk setiap item
+      queue = queue.map(item => {
+        const sasaran = item.sasaran || detectSasaranFromUrl(item.url);
+        const itemKabCode = item.kabCode || extractNumericCode(item.kota || '') || (selectedCities.length === 1 ? selectedCities[0] : '');
+        const itemKecamatan = item.kecamatan || kecamatan;
+        const kecCode = extractNumericCode(itemKecamatan);
+        const desaCode = extractNumericCode(item.desa || '');
+        
+        let payload = {
+          menu: activeMenuId,
+          submenu: activeSubmenuId,
+          periode,
+          kab: (item.kota || '').toString().replace(/^\d+\s*-\s*/, '').trim(),
+          kabCode: itemKabCode,
+          kec: itemKecamatan,
+          kecCode,
+          jenisLaporan,
+          desaCode,
+          sasaran: sasaran
+        };
+        
+        if (tabName === 'bulanan') {
+          payload.tahun = document.getElementById('tahun').value;
+          payload.faskes = item.faskes || '';
+        } else {
+          payload.desa = item.desa || '';
+          payload.rw = document.getElementById('rw-tahunan').value;
+        }
+
+        return {
+          ...item,
+          sasaran,
+          renameContext: payload
+        };
+      });
 
       // Jika mode banyak desa/faskes, kirim ke background satu per tab (bukan satu queue besar)
       // DEBUG LOG: tampilkan queue sebelum dikirim ke background
       console.log('[DEBUG][popup] Queue to background:', queue);
+
+      const execModeEl = document.getElementById(`execution-mode-${tabName}`);
+      const isSequential = execModeEl && execModeEl.value === 'sequential';
+
+      if (isSequential) {
+        // Mode sekuensial: kelompokkan per URL, jalankan di 1 tab per URL
+        resetDownloadProgress(() => {
+          switchToDownloadTab();
+          initializeDownloadProgress(queue, 'sequential').then(keysMap => {
+            const byGroup = {};
+            queue.forEach(item => {
+              const groupKey = `${item.url}_${item.kota || ''}_${item.kecamatan || ''}`;
+              if (!byGroup[groupKey]) byGroup[groupKey] = [];
+              byGroup[groupKey].push(item);
+            });
+            
+            Object.keys(byGroup).forEach(groupKey => {
+              const urlQueue = byGroup[groupKey];
+              const progKey = keysMap[groupKey];
+              const url = urlQueue[0].url;
+              
+              const firstItem = urlQueue[0];
+              const itemKabCode = firstItem.kabCode || extractNumericCode(firstItem.kota || '') || (selectedCities.length === 1 ? selectedCities[0] : '');
+              const itemKecamatan = firstItem.kecamatan || kecamatan;
+              const kecCode = extractNumericCode(itemKecamatan);
+              const desaCode = extractNumericCode(firstItem.desa || '');
+              
+              const dataSingle = {
+                tab: tabName,
+                submenu: activeSubmenuId,
+                periode,
+                kecamatan: itemKecamatan,
+                jenisLaporan,
+                selectedCities,
+                downloadQueue: urlQueue, // entire grouped queue
+                urls: [url],
+                progressKey: progKey
+              };
+              
+              let payload = {
+                menu: activeMenuId,
+                submenu: activeSubmenuId,
+                periode,
+                kab: (firstItem.kota || '').toString().replace(/^\d+\s*-\s*/, '').trim(),
+                kabCode: itemKabCode,
+                kec: itemKecamatan,
+                kecCode,
+                jenisLaporan,
+                desaCode,
+                sasaran: firstItem.sasaran || detectSasaranFromUrl(url)
+              };
+              
+              if (tabName === 'bulanan') {
+                dataSingle.faskes = firstItem.faskes || '';
+                dataSingle.tahun = document.getElementById('tahun').value;
+                payload.tahun = dataSingle.tahun;
+                payload.faskes = firstItem.faskes || '';
+                payload.sasaran = firstItem.sasaran || detectSasaranFromUrl(url) || '';
+              } else {
+                dataSingle.desa = firstItem.desa || '';
+                dataSingle.rw = document.getElementById('rw-tahunan').value;
+                dataSingle.sasaran = document.getElementById('sasaran-tahunan').value;
+                payload.desa = firstItem.desa || '';
+                payload.rw = dataSingle.rw;
+                payload.sasaran = dataSingle.sasaran || firstItem.sasaran || detectSasaranFromUrl(url) || '';
+              }
+              
+              chrome.runtime.sendMessage({ action: "setRenameContext", payload });
+              chrome.runtime.sendMessage({ action: 'processData', data: dataSingle }, (response) => {
+                if (response && response.success) {
+                  console.log('Proses download sekuensial dimulai untuk URL:', url);
+                } else {
+                  alert('Proses gagal atau tidak ada response.');
+                }
+              });
+            });
+          }).catch(err => {
+            console.error('Gagal inisialisasi progress keys:', err);
+          });
+        });
+        return;
+      }
+
       if ((selectedCities.length === 1 && (selectedKecamatan.length > 1 || hasDesaSelected)) || selectedCities.length > 1) {
         // Setiap item queue = 1 tab
         resetDownloadProgress(() => {
@@ -1956,8 +2109,8 @@ function saveUserPrefs() {
       document.querySelectorAll(`#desa-checkboxes-${tab} input[type="checkbox"]:checked`)
     ).map(cb => cb.value);
     const fieldIds = tab === 'tahunan'
-      ? ['periode-tahunan', 'rw-tahunan', 'sasaran-tahunan', 'jenis-laporan-tahunan', 'close-delay-tahunan']
-      : ['tahun', 'jenis-laporan-bulanan', 'close-delay-bulanan'];
+      ? ['periode-tahunan', 'rw-tahunan', 'sasaran-tahunan', 'jenis-laporan-tahunan', 'close-delay-tahunan', 'execution-mode-tahunan']
+      : ['tahun', 'jenis-laporan-bulanan', 'close-delay-bulanan', 'execution-mode-bulanan'];
     fieldIds.forEach(id => {
       const el = document.getElementById(id);
       if (el) prefs[id] = el.value;
@@ -1999,8 +2152,8 @@ function restoreUserPrefs() {
     // Restore simple fields & checkboxes untuk kedua tab
     ['tahunan', 'bulanan'].forEach(tab => {
       const fieldIds = tab === 'tahunan'
-        ? ['periode-tahunan', 'rw-tahunan', 'sasaran-tahunan', 'jenis-laporan-tahunan', 'close-delay-tahunan']
-        : ['tahun', 'jenis-laporan-bulanan', 'close-delay-bulanan'];
+        ? ['periode-tahunan', 'rw-tahunan', 'sasaran-tahunan', 'jenis-laporan-tahunan', 'close-delay-tahunan', 'execution-mode-tahunan']
+        : ['tahun', 'jenis-laporan-bulanan', 'close-delay-bulanan', 'execution-mode-bulanan'];
       fieldIds.forEach(id => {
         const el = document.getElementById(id);
         if (el && prefs[id] !== undefined) el.value = prefs[id];
