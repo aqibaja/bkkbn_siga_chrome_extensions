@@ -4,8 +4,72 @@
   // Helper: Wait beberapa ms
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+  // Fungsi: Tunggu konfirmasi download selesai dari background.js
+  // 4 channel: (1) direct message, (2) storage tab-specific, (3) storage universal, (4) active poll ke background
+  function waitForDownloadComplete(tabId, timeoutMs = 90000) {
+    const storageKeyTab = `downloadResult_${tabId}`;
+    const storageKeyLast = 'siga_last_download';
+    const startTs = Date.now();
 
-  // Fungsi: Cari dropdown berdasarkan label di parent/teks sekita
+    return new Promise((resolve) => {
+      let settled = false;
+      let timeoutId;
+      let pollId;
+      let bgPollId;
+
+      const finish = (success, source) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeoutId);
+        clearInterval(pollId);
+        clearInterval(bgPollId);
+        chrome.runtime.onMessage.removeListener(msgListener);
+        chrome.storage.local.remove([storageKeyTab, storageKeyLast]);
+        console.log(`[download-wait] Selesai via ${source}: ${success ? 'SUCCESS' : 'FAIL/TIMEOUT'}`);
+        resolve(success);
+      };
+
+      // Channel 1: direct message dari background
+      const msgListener = (msg) => {
+        if (msg.action === 'downloadComplete') finish(true, 'message');
+        else if (msg.action === 'downloadInterrupted') finish(false, 'message');
+      };
+      chrome.runtime.onMessage.addListener(msgListener);
+
+      // Channel 2 & 3: poll storage setiap 500ms
+      pollId = setInterval(() => {
+        chrome.storage.local.get([storageKeyTab, storageKeyLast], (res) => {
+          const tabResult = res[storageKeyTab];
+          if (tabResult && tabResult.ts >= startTs) {
+            finish(tabResult.state === 'complete', 'storage-tab');
+            return;
+          }
+          const lastResult = res[storageKeyLast];
+          if (lastResult && lastResult.ts >= startTs) {
+            finish(lastResult.state === 'complete', 'storage-last');
+          }
+        });
+      }, 500);
+
+      // Channel 4: aktif tanya background setiap 1 detik (paling reliable)
+      // Background langsung query chrome.downloads.search — tidak bergantung pada onChanged
+      bgPollId = setInterval(() => {
+        chrome.runtime.sendMessage(
+          { action: 'checkSigaDownload', since: startTs },
+          (resp) => {
+            if (chrome.runtime.lastError) return; // background sedang sleep, coba lagi nanti
+            if (resp && resp.found) finish(true, 'bg-poll');
+          }
+        );
+      }, 1000);
+
+      timeoutId = setTimeout(() => {
+        console.warn(`⏳ [download-wait] Timeout ${timeoutMs / 1000}s. Melanjutkan...`);
+        finish(false, 'timeout');
+      }, timeoutMs);
+    });
+  }
+
 
   function findDropdownControl(labelText, fallbackIndex = 0) {
     const lowerLabel = (labelText || '').toString().trim().toLowerCase();
@@ -877,9 +941,13 @@
 
         // Otherwise observe DOM mutations for dynamically injected blob links
         const observer = new MutationObserver(() => {
-          if (scanAndRegister()) {
+          try {
+            if (scanAndRegister()) {
+              observer.disconnect();
+              window.removeEventListener('message', onMessage);
+            }
+          } catch (e) {
             observer.disconnect();
-            window.removeEventListener('message', onMessage);
           }
         });
         observer.observe(document.body, { childList: true, subtree: true });
@@ -894,6 +962,9 @@
       });
     };
 
+    // Mulai dengerin sinyal downloadComplete SEBELUM blobPromise dibuat
+    // agar tidak ada kemungkinan miss event (race condition)
+    const downloadWatcher = waitForDownloadComplete(tab.id, 90000);
     const blobPromise = waitForBlob();
     const state = { blobDetected: false };
 
@@ -923,7 +994,7 @@
         };
         existing.filesCompleted = currentIndex + 1;
         existing.fileAkhir = kota || "Provinsi";
-        if (currentIndex >= downloadQueue.length - 1) existing.status = "success";
+        existing.status = "downloading"; // Tetap 'downloading' sampai dikonfirmasi
         chrome.storage.local.set({ [key]: existing }, () => {
           chrome.runtime.sendMessage({ action: "refresh_download_status" });
         });
@@ -934,27 +1005,43 @@
       const existing = fromStorage || {
         url: url,
         status: "downloading",
-        totalFiles: downloadQueue.length, // total kota/file untuk URL ini
+        totalFiles: downloadQueue.length,
         filesCompleted: 0,
         fileAkhir: ""
       };
 
-      // Update progress
       existing.filesCompleted = currentIndex + 1;
       existing.fileAkhir = kota || "Provinsi";
-      if (currentIndex >= downloadQueue.length - 1) existing.status = "success";
+      existing.status = "downloading"; // Tetap 'downloading' sampai dikonfirmasi
 
       chrome.storage.local.set({ [key]: existing }, () => {
         chrome.runtime.sendMessage({ action: "refresh_download_status" });
       });
     }
 
-    console.log("⏳ Menunggu proses pembuatan Excel oleh web...");
+    console.log("⏳ Menunggu blob URL dan konfirmasi download ke disk...");
     await blobPromise;
-    console.log("✅ File terdeteksi, bersiap untuk lanjut...");
+    console.log("✅ Blob terdeteksi — menunggu konfirmasi file selesai didownload ke disk...");
 
-    // Safety buffer to allow Chrome's download manager to capture and save the blob completely
-    await wait(3000);
+    // Tunggu sinyal nyata dari background bahwa file sudah selesai ditulis ke disk
+    const downloadOk = await downloadWatcher;
+
+    // Update status final setelah download dikonfirmasi
+    {
+      const hash = getUrlHash(url);
+      const { key, existing: fromStorage } = await getKeyAndExisting(hash, downloadQueue, storage?.progressKey);
+      if (fromStorage) {
+        fromStorage.status = downloadOk ? "success" : "fail";
+        if (downloadOk) {
+          console.log('✅ File dikonfirmasi selesai didownload ke disk.');
+        } else {
+          console.warn('⚠️ Download timeout/interrupted — tandai fail.');
+        }
+        chrome.storage.local.set({ [key]: fromStorage }, () => {
+          chrome.runtime.sendMessage({ action: "refresh_download_status" });
+        });
+      }
+    }
 
   } else {
     console.error("❌ Tombol Cetak Excel tidak ditemukan");

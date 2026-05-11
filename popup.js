@@ -761,63 +761,65 @@ function handleCancelAndCloseTab(url) {
 // Handler untuk retry semua item gagal dan/atau masih progress
 function handleRetryAll() {
   chrome.storage.local.get(null, function (data) {
-    const failedOrProgressEntries = Object.keys(data)
-      .filter(k => k.startsWith('tabdownload_'))
-      .filter(k => data[k].status === 'fail' || data[k].status === 'progress')
-      .map(k => data[k]);
+    // Hanya retry item yang GAGAL (fail), bukan yang masih berjalan (progress)
+    const failedKeys = new Set(
+      Object.keys(data)
+        .filter(k => k.startsWith('tabdownload_') && data[k].status === 'fail')
+    );
 
-    if (failedOrProgressEntries.length === 0) {
-      alert('Tidak ada item yang gagal atau sedang berjalan untuk di-retry.');
+    if (failedKeys.size === 0) {
+      alert('Tidak ada item yang gagal (error) untuk di-retry.\nItem yang masih berjalan (progress) tidak di-restart.');
       return;
     }
 
-    const uniqueUrls = [...new Set(failedOrProgressEntries.map(e => e.url).filter(Boolean))];
-
-    if (!confirm(`Retry semua ${failedOrProgressEntries.length} item (gagal/progress) untuk ${uniqueUrls.length} URL?\n\nProses ini akan memulai ulang semua download yang gagal atau terhenti.`)) return;
+    if (!confirm(`Retry ${failedKeys.size} item yang GAGAL?\n\nHanya item dengan status error yang akan di-restart.`)) return;
 
     const autoKeys = Object.keys(data).filter(k => k.startsWith('auto_'));
     let retryCount = 0;
 
-    uniqueUrls.forEach(url => {
-      for (const key of autoKeys) {
-        const autoData = data[key];
-        if (autoData && autoData.downloadQueue) {
-          const firstItem = autoData.downloadQueue[0];
-          if (firstItem && firstItem.url === url) {
-            const itemsToRetry = autoData.downloadQueue
-              .map((item, idx) => ({ item, idx }))
-              .filter(({ item }) => {
-                const itemHash = safeUrlHash(item.url);
-                const progressKeys = Object.keys(data).filter(k => k.startsWith(`tabdownload_${itemHash}`));
-                return progressKeys.some(pk => data[pk] && (data[pk].status === 'fail' || data[pk].status === 'progress'));
-              });
+    // Iterasi setiap auto_ key secara independen (bukan dikelompokkan per URL)
+    // Ini memperbaiki mode paralel: setiap tab punya auto_ sendiri
+    autoKeys.forEach(autoKey => {
+      const autoData = data[autoKey];
+      if (!autoData || !autoData.downloadQueue || autoData.downloadQueue.length === 0) return;
 
-            if (itemsToRetry.length > 0) {
-              retryCount += itemsToRetry.length;
-              const firstIdx = itemsToRetry[0].idx;
-              chrome.storage.local.set({ [key]: { ...autoData, currentIndex: firstIdx, retryCount: 0 } }, () => {
-                itemsToRetry.forEach(({ item }) => {
-                  const itemHash = safeUrlHash(item.url);
-                  const progressKeys = Object.keys(data).filter(k => k.startsWith(`tabdownload_${itemHash}`));
-                  progressKeys.forEach(pk => {
-                    if (data[pk] && (data[pk].status === 'fail' || data[pk].status === 'progress')) {
-                      chrome.storage.local.set({ [pk]: { ...data[pk], status: 'progress', fileAkhir: item.kota || 'Retry...' } });
-                    }
-                  });
-                });
-                chrome.runtime.sendMessage({ action: 'retryFailedUrl', url, targetKey: key });
-              });
-            }
-            break;
-          }
-        }
+      const queue = autoData.downloadQueue;
+      const progressKey = autoData.progressKey;
+
+      // Cek apakah auto_ ini punya progress yang fail/progress
+      const isFailedByProgressKey = progressKey && failedKeys.has(progressKey);
+      const isFailedByHashSearch = !isFailedByProgressKey && queue.some(item => {
+        const itemHash = safeUrlHash(item.url);
+        return [...failedKeys].some(k => k.startsWith(`tabdownload_${itemHash}`));
+      });
+
+      if (!isFailedByProgressKey && !isFailedByHashSearch) return;
+
+      retryCount++;
+      const currentItem = queue[autoData.currentIndex || 0] || queue[0];
+      const url = currentItem?.url;
+
+      // Reset auto_ state dan kirim retry (max retryCount = 5 untuk cegah infinite loop)
+      const currentRetryCount = (autoData.retryCount || 0);
+      if (currentRetryCount >= 5) {
+        console.warn(`[retry] Lewati ${autoKey} — sudah di-retry ${currentRetryCount}x`);
+        return;
       }
+      chrome.storage.local.set({ [autoKey]: { ...autoData, currentIndex: 0, retryCount: currentRetryCount + 1 } }, () => {
+        // Reset status progress ke 'progress'
+        const pk = isFailedByProgressKey ? progressKey
+          : [...failedKeys].find(k => k.startsWith(`tabdownload_${safeUrlHash(url || '')}`));
+        if (pk && data[pk]) {
+          chrome.storage.local.set({ [pk]: { ...data[pk], status: 'progress', fileAkhir: currentItem?.kota || 'Retry...' } });
+        }
+        if (url) chrome.runtime.sendMessage({ action: 'retryFailedUrl', url, targetKey: autoKey });
+      });
     });
 
     if (retryCount > 0) {
-      alert(`♻️ Retry dimulai untuk ${retryCount} item yang gagal/terhenti.`);
+      alert(`♻️ Retry dimulai untuk ${retryCount} item.`);
     } else {
-      alert('Tidak ada item yang dapat di-retry saat ini.');
+      alert('Tidak ada auto state aktif yang ditemukan.\nKemungkinan tab sudah ditutup. Jalankan ulang dari form.');
     }
     setTimeout(() => renderDownloadTab(), 500);
   });
@@ -2115,31 +2117,50 @@ function restoreUserPrefs() {
       const targetContent = document.getElementById(`${prefs.activeTab}-content`);
       if (targetBtn) targetBtn.classList.add('active');
       if (targetContent) targetContent.classList.add('active');
+      // Render progress jika tab Download yang di-restore
+      if (prefs.activeTab === 'download') renderDownloadTab();
     }
 
     // Restore kecamatan & tabel (perlu delay karena dirender async)
     setTimeout(() => {
       ['tahunan', 'bulanan'].forEach(tab => {
+        // Step 1: Restore kecamatan checkboxes
         if (prefs[`kecamatan_${tab}`]?.length) {
           document.querySelectorAll(`#kecamatan-checkboxes-${tab} input[type="checkbox"]`).forEach(cb => {
             if (prefs[`kecamatan_${tab}`].includes(cb.value)) cb.checked = true;
           });
           const kecInput = document.getElementById(`kecamatan-${tab}`);
           if (kecInput) kecInput.value = prefs[`kecamatan_${tab}`][0] || '';
+
+          // Step 2: Render desa/faskes list berdasarkan kecamatan yang baru di-restore
+          // (wajib dilakukan sebelum bisa restore pilihan desa)
+          renderListDesaFaskes(tab);
         }
+
+        // Restore tabel checkboxes
         if (prefs[`tabel_${tab}`]?.length) {
           document.querySelectorAll(`#tabel-checkboxes-${tab} input[type="checkbox"]`).forEach(cb => {
             if (prefs[`tabel_${tab}`].includes(cb.value)) cb.checked = true;
           });
           syncTabelToUrl(tab);
         }
-        if (prefs[`desa_${tab}`]?.length) {
-          document.querySelectorAll(`#desa-checkboxes-${tab} input[type="checkbox"]`).forEach(cb => {
-            if (prefs[`desa_${tab}`].includes(cb.value)) cb.checked = true;
-          });
-          syncDesaToUrl(tab);
-        }
       });
+
+      // Step 3: Restore pilihan desa/faskes SETELAH renderListDesaFaskes selesai render DOM
+      setTimeout(() => {
+        ['tahunan', 'bulanan'].forEach(tab => {
+          if (prefs[`desa_${tab}`]?.length) {
+            let restoredCount = 0;
+            document.querySelectorAll(`#desa-checkboxes-${tab} input[type="checkbox"]`).forEach(cb => {
+              if (prefs[`desa_${tab}`].includes(cb.value)) {
+                cb.checked = true;
+                restoredCount++;
+              }
+            });
+            if (restoredCount > 0) syncDesaToUrl(tab);
+          }
+        });
+      }, 50);
     }, 100);
   });
 }

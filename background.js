@@ -23,6 +23,7 @@ function sanitize(s) {
 
 // Helper: antrian rename context (untuk multi-download supaya tidak saling overwrite)
 let enqueuePromise = Promise.resolve();
+
 function enqueueRenameContext(payload) {
     const ctx = payload || {};
     enqueuePromise = enqueuePromise.then(() => {
@@ -261,6 +262,26 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true;
     }
 
+    // 8) Content.js bertanya: apakah ada download SIGA yang selesai sejak `since` timestamp?
+    if (message.action === 'checkSigaDownload') {
+        const { since } = message;
+        // Cari semua download yang selesai dari domain SIGA
+        chrome.downloads.search(
+            { state: 'complete', limit: 10, orderBy: ['-startTime'] },
+            (items) => {
+                const found = items.find(item => {
+                    const host = getHostSafe(item.url);
+                    if (host !== ALLOWED_HOST) return false;
+                    // endTime adalah saat selesai download
+                    const endTs = item.endTime ? new Date(item.endTime).getTime() : 0;
+                    return endTs >= (since || 0);
+                });
+                sendResponse({ found: !!found, state: found ? 'complete' : null });
+            }
+        );
+        return true;
+    }
+
     if (message.action === 'registerBlobRename') {
         const { blobUrl, payload } = message;
         if (!blobUrl || !payload) { sendResponse({ ok: false }); return; }
@@ -490,4 +511,41 @@ chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
     tryBlobContext(10);
 
     return true;
+});
+
+// =========================
+// DOWNLOAD COMPLETION DETECTION
+// Pakai chrome.downloads.search() agar tabId selalu tersedia
+// tanpa perlu simpan state di memory (MV3 service worker bisa restart kapan saja)
+// =========================
+chrome.downloads.onChanged.addListener((delta) => {
+    if (!delta.state) return;
+    const state = delta.state.current;
+    if (state !== 'complete' && state !== 'interrupted') return;
+
+    chrome.downloads.search({ id: delta.id }, (items) => {
+        if (!items || items.length === 0) return;
+        const item = items[0];
+
+        const host = getHostSafe(item.url);
+        if (host !== ALLOWED_HOST) return;
+
+        const tabId = item.tabId;
+        const result = { state, downloadId: delta.id, tabId, ts: Date.now() };
+        console.log(`[download-track] SIGA download ${delta.id} ${state} tabId=${tabId}`);
+
+        // Selalu tulis ke storage untuk setiap SIGA download
+        // 'siga_last_download' = fallback universal (tabId berapapun, bahkan -1)
+        const toSet = { siga_last_download: result };
+        if (typeof tabId === 'number' && tabId >= 0) {
+            toSet[`downloadResult_${tabId}`] = result;
+        }
+        chrome.storage.local.set(toSet);
+
+        // Direct message ke tab (path cepat, opsional)
+        if (typeof tabId === 'number' && tabId >= 0) {
+            const action = state === 'complete' ? 'downloadComplete' : 'downloadInterrupted';
+            chrome.tabs.sendMessage(tabId, { action, downloadId: delta.id }).catch(() => {});
+        }
+    });
 });
