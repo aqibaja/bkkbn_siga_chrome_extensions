@@ -84,7 +84,7 @@
         return nodes[index];
       }
       if (tries++ % 5 === 0) {
-         chrome.runtime.sendMessage({ action: "wakeMeUp" }).catch(() => {});
+        chrome.runtime.sendMessage({ action: "wakeMeUp" }).catch(() => { });
       }
       await wait(interval);
     }
@@ -180,7 +180,7 @@
       observer.observe(document.body, { childList: true, subtree: true });
 
       const wakeTimer = setInterval(() => {
-         chrome.runtime.sendMessage({ action: "wakeMeUp" }).catch(() => {});
+        chrome.runtime.sendMessage({ action: "wakeMeUp" }).catch(() => { });
       }, 800);
 
       setTimeout(() => {
@@ -233,7 +233,7 @@
     let opsi = null;
     for (let tries = 0; tries < maxTries; tries++) {
       if (tries % 5 === 0) {
-         chrome.runtime.sendMessage({ action: "wakeMeUp" }).catch(() => {});
+        chrome.runtime.sendMessage({ action: "wakeMeUp" }).catch(() => { });
       }
       const allOptions = [...document.querySelectorAll('.css-yt9ioa-option, .css-1n7v3ny-option, .css-9gakcf-option, .ant-select-item, .ant-select-dropdown-menu-item, .react-select__option, [role="option"]')];
       opsi = allOptions.find(el => {
@@ -421,12 +421,17 @@
   // === HANDLE POPUP, STORAGE, DLL (kode lama tetap) ===
 
   // Fitur lama: Handle popup Rekap/Detail
-  async function handlePopup(reportType, url, kota, downloadQueue, currentIndex) {
+  async function handlePopup(reportType, url, kota, downloadQueue, currentIndex, state = { blobDetected: false }) {
     let tries = 0;
     const maxTries = 30;
     const reportTypeNorm = (reportType || '').toString().trim().toLowerCase();
 
     while (tries < maxTries) {
+      if (state.blobDetected) {
+        console.log("✅ File terdeteksi, membatalkan pencarian popup.");
+        return;
+      }
+
       const popUp = document.querySelector('.swal2-title') || document.querySelector('.modal-title') || document.querySelector('h2, h3, h4');
       const rekapButton = [...document.querySelectorAll("button")].find(btn => /rekap/i.test(btn.textContent));
       const detailButton = [...document.querySelectorAll("button")].find(btn => /detail/i.test(btn.textContent));
@@ -444,7 +449,6 @@
         return;
       }
 
-      // Jika tombol eksisting lain (race), selesaikan dengan fallback paling dekat
       if (!popUp && tries < 5) {
         await wait(400);
         tries++;
@@ -465,6 +469,8 @@
       await wait(500);
       tries++;
     }
+
+    if (state.blobDetected) return;
 
     alert("⚠️ Popup atau tombol Rekap/Detail tidak muncul setelah menunggu. Proses dibatalkan.");
     console.warn("⚠️ Popup tidak muncul setelah menunggu");
@@ -579,7 +585,7 @@
   // Proses utama automation per queue
   const { kota, url, renameContext } = downloadQueue[currentIndex];
   console.log(`🚀 Memproses kota ${currentIndex + 1}/${downloadQueue.length}: ${kota} - ${url}`);
-  
+
   // Set context rename untuk file yang akan didownload ini
   if (renameContext) {
     chrome.runtime.sendMessage({ action: "setRenameContext", payload: renameContext });
@@ -713,7 +719,7 @@
     // Solusi pasti: gunakan index pasti (4 untuk Bulanan, 3 untuk Tahunan jika tanpa faskes).
     const dropdownIndex = isTahunan ? 3 : 4;
     let targetDropdown = await waitForDropdownByIndex(dropdownIndex, 10000); // tunggu hingga 10 detik untuk load desa
-    
+
     if (targetDropdown) {
       console.log(`[DEBUG] Dropdown target ditemukan pada index ${dropdownIndex}!`, targetDropdown);
       const result = await bukaDanPilihPadaDropdown(targetDropdown, itemDesaOrFaskes, url, kota, currentIndex, downloadQueue);
@@ -758,6 +764,13 @@
     btn.textContent.includes("Cetak") &&
     btn.querySelector("i.icon-file-excel")
   );
+
+  // Kumpulkan blob yang sudah ada di DOM sebelum klik, agar tidak dihitung sebagai download baru
+  const blobSelectors = ['a[href^="blob:"]', 'a[download][href^="blob:"]', 'iframe[src^="blob:"]', 'source[src^="blob:"]', 'a[href*="blob:"]'];
+  const existingBlobs = new Set(
+    [...document.querySelectorAll(blobSelectors.join(','))].map(el => el.href || el.src).filter(Boolean)
+  );
+
   if (button) {
     button.click();
     console.log("✅ Klik tombol Cetak Excel");
@@ -780,6 +793,8 @@
           const kab = (kota || '').toString().replace(/^\d+\s*-\s*/, '').trim();
           const kec = storage.kecamatan || '';
           const desa = (downloadQueue[currentIndex] && downloadQueue[currentIndex].desa) || storage.desa || '';
+          const faskes = (downloadQueue[currentIndex] && downloadQueue[currentIndex].faskes) || storage.faskes || '';
+          
           payload = {
             periode: storage.periode,
             tahun: storage.tahun,
@@ -788,8 +803,8 @@
             jenisLaporan: storage.jenisLaporan || '',
             kec,
             kecCode: storage.kecCode || extractNumericCode(kec),
-            faskes: storage.faskes || '',
-            desa,
+            faskes: faskes,
+            desa: desa,
             desaCode: storage.desaCode || extractNumericCode(desa),
             rw: storage.rw || '',
             menu: storage.menu || '',
@@ -828,8 +843,8 @@
         const timeoutMs = 30000; // Wait up to 30 seconds for the download to start
 
         const scanAndRegister = () => {
-          const nodes = document.querySelectorAll(selectors.join(','));
-          const blobs = [...nodes].map(el => el.href || el.src).filter(Boolean);
+          const nodes = document.querySelectorAll(blobSelectors.join(','));
+          const blobs = [...nodes].map(el => el.href || el.src).filter(b => b && !existingBlobs.has(b));
           if (blobs.length > 0) {
             const blobUrl = blobs[blobs.length - 1];
             registerBlobUrl(blobUrl);
@@ -879,11 +894,40 @@
       });
     };
 
-    // Start waiting for the blob immediately after clicking Cetak Excel
     const blobPromise = waitForBlob();
+    const state = { blobDetected: false };
+
+    blobPromise.then((res) => {
+      if (res) state.blobDetected = true;
+    });
 
     if (jenisLaporan) {
-      await handlePopup(jenisLaporan, url, kota, downloadQueue, currentIndex);
+      // Race the popup vs blob detection
+      const popupPromise = handlePopup(jenisLaporan, url, kota, downloadQueue, currentIndex, state);
+      
+      const raceResult = await Promise.race([
+        popupPromise.then(() => 'popup_handled'),
+        blobPromise.then((res) => res ? 'blob_detected' : 'blob_timeout')
+      ]);
+
+      if (raceResult === 'blob_detected' || state.blobDetected) {
+        console.log("✅ File terdeteksi sebelum popup, update progress secara langsung.");
+        const hash = getUrlHash(url);
+        const { key, existing: fromStorage } = await getKeyAndExisting(hash, downloadQueue, storage?.progressKey);
+        const existing = fromStorage || {
+          url: url,
+          status: "downloading",
+          totalFiles: downloadQueue.length,
+          filesCompleted: 0,
+          fileAkhir: ""
+        };
+        existing.filesCompleted = currentIndex + 1;
+        existing.fileAkhir = kota || "Provinsi";
+        if (currentIndex >= downloadQueue.length - 1) existing.status = "success";
+        chrome.storage.local.set({ [key]: existing }, () => {
+          chrome.runtime.sendMessage({ action: "refresh_download_status" });
+        });
+      }
     } else {
       const hash = getUrlHash(url);
       const { key, existing: fromStorage } = await getKeyAndExisting(hash, downloadQueue, storage?.progressKey);
@@ -908,7 +952,7 @@
     console.log("⏳ Menunggu proses pembuatan Excel oleh web...");
     await blobPromise;
     console.log("✅ File terdeteksi, bersiap untuk lanjut...");
-    
+
     // Safety buffer to allow Chrome's download manager to capture and save the blob completely
     await wait(3000);
 
@@ -917,15 +961,20 @@
   }
 
   // Next queue automation
-    try {
-      const nextIndex = currentIndex + 1;
+  try {
+    const nextIndex = currentIndex + 1;
     // Reset retry count saat pindah ke item berikutnya
     await chrome.storage.local.set({ [key]: { ...storage, currentIndex: nextIndex, retryCount: 0 } });
     const next = downloadQueue[nextIndex];
     if (next) {
       console.log("⏳ Lanjut ke desa/kota berikutnya...");
       setTimeout(() => {
-        chrome.runtime.sendMessage({ action: "navigateAndReload", url: next.url });
+        if (location.href === next.url) {
+          location.reload();
+        } else {
+          location.href = next.url;
+          setTimeout(() => location.reload(), 500);
+        }
       }, 500);
     } else {
       // Cek status akhir di storage sebelum memutuskan menutup tab
