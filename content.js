@@ -74,25 +74,38 @@
   function findDropdownControl(labelText, fallbackIndex = 0) {
     const lowerLabel = (labelText || '').toString().trim().toLowerCase();
 
-    const labelEls = [...document.querySelectorAll('label')].filter(l =>
-      l.textContent && l.textContent.trim().toLowerCase().includes(lowerLabel)
-    );
-    for (const label of labelEls) {
-      const container = label.closest('.form-group, .ant-form-item, .ant-form-item-control, .css-1bq5ukv, .row, .col');
-      if (container) {
-        const candidate = container.querySelector(
-          'div[role="combobox"], div[role="button"], input[role="combobox"], .css-yk16xz-control, .ant-select-selector, .react-select__control, .select-container'
-        );
-        if (candidate) return candidate;
-      }
-      // jika direct sibling
-      const sibling = label.parentElement && label.parentElement.querySelector(
-        'div[role="combobox"], .css-yk16xz-control, .ant-select-selector, .react-select__control'
-      );
-      if (sibling) return sibling;
-    }
+    if (lowerLabel) {
+      // Smart fuzzy matching untuk label dengan penanganan variasi Kab/Kota
+      const labelEls = [...document.querySelectorAll('label')].filter(l => {
+        if (!l.textContent) return false;
+        const txt = l.textContent.trim().toLowerCase();
+        if (txt.includes(lowerLabel)) return true;
 
-    {
+        if (lowerLabel.includes('kab') && lowerLabel.includes('kota')) {
+          return (txt.includes('kab') && txt.includes('kota')) || txt.includes('kabupaten') || txt.includes('kota');
+        }
+
+        // Pencocokan token kata demi kata
+        const tokens = lowerLabel.split(/[\s/_-]+/);
+        return tokens.every(token => token.length > 1 && txt.includes(token));
+      });
+
+      for (const label of labelEls) {
+        const container = label.closest('.form-group, .ant-form-item, .ant-form-item-control, .css-1bq5ukv, .row, .col');
+        if (container) {
+          const candidate = container.querySelector(
+            'div[role="combobox"], div[role="button"], input[role="combobox"], .css-yk16xz-control, .ant-select-selector, .react-select__control, .select-container'
+          );
+          if (candidate) return candidate;
+        }
+        // jika direct sibling
+        const sibling = label.parentElement && label.parentElement.querySelector(
+          'div[role="combobox"], .css-yk16xz-control, .ant-select-selector, .react-select__control'
+        );
+        if (sibling) return sibling;
+      }
+
+      // Coba cari dari atribut (placeholder, aria-label, dsb)
       const candidateByAttr = [...document.querySelectorAll('input, div[role="combobox"], div[role="button"], .ant-select-selector, .react-select__control')].find(el => {
         const candidateText = (
           (el.placeholder || '') + ' ' +
@@ -100,11 +113,16 @@
           (el.getAttribute('title') || '') + ' ' +
           (el.getAttribute('data-testid') || '')
         ).toString().toLowerCase();
-        return lowerLabel && candidateText.includes(lowerLabel);
+        return candidateText.includes(lowerLabel);
       });
       if (candidateByAttr) return candidateByAttr;
+
+      // KUNCI: Jangan kembalikan fallback selector jika labelText ditentukan agar pembacaan antarmuka dinamis
+      // bisa menunggu (polling) hingga dropdown yang sebenarnya muncul di layar.
+      return null;
     }
 
+    // Hanya gunakan fallback selector jika tidak ada labelText (pembacaan berdasarkan index murni)
     const fallbackSelectors = [
       'div[role="combobox"]',
       'div[role="button"]',
@@ -127,7 +145,7 @@
     return nodes[fallbackIndex] || nodes[0] || null;
   }
 
-  async function waitForDropdown(labelText, fallbackIndex = 0, timeout = 5000, interval = 200) {
+  async function waitForDropdown(labelText, fallbackIndex = 0, timeout = 20000, interval = 200) {
     const start = Date.now();
     let control;
     while (Date.now() - start < timeout) {
@@ -139,7 +157,7 @@
   }
 
   // Tunggu dropdown spesifik berdasarkan urutan (index) di DOM, lebih aman dari salah label
-  async function waitForDropdownByIndex(index, timeout = 5000, interval = 200) {
+  async function waitForDropdownByIndex(index, timeout = 20000, interval = 200) {
     const start = Date.now();
     let tries = 0;
     while (Date.now() - start < timeout) {
@@ -267,7 +285,7 @@
       if (opts.length > 0) return opts;
       await wait(interval);
     }
-    throw new Error("❌ Dropdown option tidak muncul dalam waktu cukup.");
+    return document.querySelectorAll(selectorOpt); // return kosong, jangan throw
   }
 
   // Konsolidasi fungsi pemilihan dropdown + status failure immediate
@@ -408,12 +426,16 @@
     let currentIndex = monitorState.currentIndex || 0;
     let results = Array.isArray(monitorState.results) ? monitorState.results : [];
 
-    // Initial load: tunggu sampai datanya siap (bisa lebih lama pada awal tab dibuka)
     const initialWaitMs = (monitorState && typeof monitorState.initialWaitMs === 'number') ? monitorState.initialWaitMs : 30000;
     const loopWaitMs = (monitorState && typeof monitorState.loopWaitMs === 'number') ? monitorState.loopWaitMs : 8000;
+
+    // Deteksi apakah ini mode kecamatan
+    const isKecMode = monitorState.queue.length > 0 && monitorState.queue[0].isKecamatan === true;
+
+    // Initial load: tunggu sampai datanya siap
     await waitForBkbDataReady(initialWaitMs);
     const acehValues = await extractTotalUpdateBelum();
-    if (!results.some(r => r.kota === 'PROVINSI')) {
+    if (!isKecMode && !results.some(r => r.kota === 'PROVINSI')) {
       results.push({ kota: 'PROVINSI', ...acehValues });
       await chrome.storage.local.set({
         bkbMonitoring: {
@@ -428,44 +450,102 @@
 
     const cariButton = await waitForButtonByText('Cari', 10000);
 
-    for (; currentIndex < monitorState.queue.length; currentIndex++) {
-      const kotaEntry = monitorState.queue[currentIndex];
-      if (!kotaEntry || !kotaEntry.name) continue;
-
-      const kotaDropdown = await waitForDropdown('Kab/Kota', 2);
-      if (!kotaDropdown) {
-        console.warn(`[BKB] Dropdown Kab/Kota tidak ditemukan untuk ${kotaEntry.name}`);
-        continue;
-      }
-
-      const selected = await bukaDanPilihPadaDropdown(kotaDropdown, kotaEntry.name);
-      if (!selected) {
-        console.warn(`[BKB] Gagal memilih ${kotaEntry.name}, lanjut ke berikutnya.`);
-        continue;
-      }
-
-      await wait(250);
-      if (cariButton) {
-        cariButton.click();
-      }
-
-      // Per-kab: gunakan timeout berdasarkan setting loopWaitMs
-      await waitForBkbDataReady(loopWaitMs);
-      await wait(200);
-
-      const values = await extractTotalUpdateBelum();
-      results.push({ kota: kotaEntry.name, ...values });
-
-      await chrome.storage.local.set({
-        bkbMonitoring: {
-          ...monitorState,
-          mode: 'active',
-          currentIndex: currentIndex + 1,
-          results,
-          lastUpdated: Date.now()
+    // ── MODE KECAMATAN: pilih Kab/Kota 1x, lalu loop dropdown Kecamatan ──
+    if (isKecMode) {
+      // Pilih kabupaten hanya sekali di awal (atau jika belum dipilih)
+      const firstEntry = monitorState.queue[0];
+      if (firstEntry && firstEntry.kabName) {
+        console.log(`[BKB-Kec] Memilih Kab/Kota: ${firstEntry.kabName}`);
+        const kotaDropdown = await waitForDropdown('Kab/Kota', 2);
+        if (kotaDropdown) {
+          await bukaDanPilihPadaDropdown(kotaDropdown, firstEntry.kabName);
+          await wait(400);
+          if (cariButton) cariButton.click();
+          await waitForBkbDataReady(loopWaitMs);
+          await wait(300);
+        } else {
+          console.warn('[BKB-Kec] Dropdown Kab/Kota tidak ditemukan!');
         }
-      });
-      await wait(600);
+      }
+
+      for (; currentIndex < monitorState.queue.length; currentIndex++) {
+        const kecEntry = monitorState.queue[currentIndex];
+        if (!kecEntry || !kecEntry.name) continue;
+
+        console.log(`[BKB-Kec] Processing kecamatan ${currentIndex + 1}/${monitorState.queue.length}: ${kecEntry.name}`);
+
+        // Pilih dropdown Kecamatan
+        const kecDropdown = await waitForDropdown('Kecamatan', 3);
+        if (!kecDropdown) {
+          console.warn(`[BKB-Kec] Dropdown Kecamatan tidak ditemukan untuk ${kecEntry.name}`);
+          results.push({ kota: kecEntry.name, total: 'N/A', update: 'N/A', belum: 'N/A' });
+        } else {
+          const selected = await bukaDanPilihPadaDropdown(kecDropdown, kecEntry.name);
+          if (!selected) {
+            console.warn(`[BKB-Kec] Gagal memilih kecamatan ${kecEntry.name}, lanjut ke berikutnya.`);
+            results.push({ kota: kecEntry.name, total: 'N/A', update: 'N/A', belum: 'N/A' });
+          } else {
+            await wait(250);
+            if (cariButton) cariButton.click();
+            await waitForBkbDataReady(loopWaitMs);
+            await wait(200);
+            const values = await extractTotalUpdateBelum();
+            results.push({ kota: kecEntry.name, ...values });
+          }
+        }
+
+        await chrome.storage.local.set({
+          bkbMonitoring: {
+            ...monitorState,
+            mode: 'active',
+            currentIndex: currentIndex + 1,
+            results,
+            lastUpdated: Date.now()
+          }
+        });
+        await wait(600);
+      }
+
+    } else {
+      // ── MODE LAMA: loop per Kab/Kota (provinsi) ──
+      for (; currentIndex < monitorState.queue.length; currentIndex++) {
+        const kotaEntry = monitorState.queue[currentIndex];
+        if (!kotaEntry || !kotaEntry.name) continue;
+
+        const kotaDropdown = await waitForDropdown('Kab/Kota', 2);
+        if (!kotaDropdown) {
+          console.warn(`[BKB] Dropdown Kab/Kota tidak ditemukan untuk ${kotaEntry.name}`);
+          continue;
+        }
+
+        const selected = await bukaDanPilihPadaDropdown(kotaDropdown, kotaEntry.name);
+        if (!selected) {
+          console.warn(`[BKB] Gagal memilih ${kotaEntry.name}, lanjut ke berikutnya.`);
+          continue;
+        }
+
+        await wait(250);
+        if (cariButton) {
+          cariButton.click();
+        }
+
+        await waitForBkbDataReady(loopWaitMs);
+        await wait(200);
+
+        const values = await extractTotalUpdateBelum();
+        results.push({ kota: kotaEntry.name, ...values });
+
+        await chrome.storage.local.set({
+          bkbMonitoring: {
+            ...monitorState,
+            mode: 'active',
+            currentIndex: currentIndex + 1,
+            results,
+            lastUpdated: Date.now()
+          }
+        });
+        await wait(600);
+      }
     }
 
     await chrome.storage.local.set({
@@ -480,9 +560,152 @@
     console.log('[BKB] Monitoring selesai', results);
   }
 
+  /**
+   * Mode Paralel Batch: jalankan monitoring kecamatan untuk 1 kabupaten.
+   * Baca/tulis ke storageKey = `bkbMonitoringKec_<tabId>` (bukan bkbMonitoring global).
+   */
+  async function handleBkbKecMonitoringLoop(kecState, storageKey) {
+    if (!kecState || !Array.isArray(kecState.queue)) return;
+    let currentIndex = kecState.currentIndex || 0;
+    let results = Array.isArray(kecState.results) ? kecState.results : [];
+
+    const initialWaitMs = typeof kecState.initialWaitMs === 'number' ? kecState.initialWaitMs : 30000;
+    const loopWaitMs = typeof kecState.loopWaitMs === 'number' ? kecState.loopWaitMs : 8000;
+
+    console.log(`[BKB-Batch] Mulai ${kecState.kabName}: ${kecState.queue.length} kecamatan, initialWait=${initialWaitMs}ms`);
+
+    // Tunggu halaman load
+    const pageReady = await waitForBkbDataReady(initialWaitMs);
+    console.log(`[BKB-Batch] Page ready: ${pageReady}, URL: ${location.hash}`);
+
+    // Debug: lihat berapa banyak dropdown di halaman
+    const allDropdowns = document.querySelectorAll('div[role="combobox"], .css-yk16xz-control, .ant-select-selector, .react-select__control');
+    console.log(`[BKB-Batch] Dropdown count di halaman: ${allDropdowns.length}`);
+    allDropdowns.forEach((d, i) => {
+      const label = d.closest('.form-group, .ant-form-item, .row')?.querySelector('label');
+      console.log(`  [${i}] label="${label?.textContent?.trim()}" class="${d.className.slice(0,40)}"`);
+    });
+
+    const cariButton = await waitForButtonByText('Cari', 10000);
+    console.log(`[BKB-Batch] Tombol Cari: ${!!cariButton}`);
+
+    // Pilih Kab/Kota 1x di awal
+    if (kecState.kabName) {
+      const kotaDropdown = await waitForDropdown('Kab/Kota', 2);
+      console.log(`[BKB-Batch] Dropdown Kab/Kota: ${!!kotaDropdown}`);
+      if (kotaDropdown) {
+        const selectedKab = await bukaDanPilihPadaDropdown(kotaDropdown, kecState.kabName);
+        console.log(`[BKB-Batch] Pilih Kab/Kota '${kecState.kabName}': ${selectedKab}`);
+        await wait(400);
+        if (cariButton) cariButton.click();
+        await waitForBkbDataReady(loopWaitMs);
+        await wait(300);
+
+        // Setelah pilih kab, cek apakah dropdown Kecamatan muncul
+        const allDropdownsAfter = document.querySelectorAll('div[role="combobox"], .css-yk16xz-control, .ant-select-selector, .react-select__control');
+        console.log(`[BKB-Batch] Dropdown count setelah pilih Kab/Kota: ${allDropdownsAfter.length}`);
+      } else {
+        console.warn(`[BKB-Batch] Dropdown Kab/Kota tidak ditemukan untuk ${kecState.kabName}`);
+      }
+    }
+
+    // Cek apakah dropdown Kecamatan ada di halaman ini (Beri toleransi waktu lebih lama karena 23 tab berjalan paralel)
+    const kecDropdownTest = await waitForDropdown('Kecamatan', 3, 20000);
+    console.log(`[BKB-Batch] Test dropdown Kecamatan: ${!!kecDropdownTest}`);
+
+    if (!kecDropdownTest) {
+      console.warn(`[BKB-Batch] Halaman ini tidak punya dropdown Kecamatan! Ambil data level Kab/Kota saja.`);
+      // Ambil data yang sudah ada (level Kab/Kota) sebagai satu baris
+      const values = await extractTotalUpdateBelum();
+      console.log(`[BKB-Batch] Data Kab/Kota:`, values);
+      results.push({ kota: kecState.kabName + ' (Level Kab)', ...values });
+      await chrome.storage.local.set({
+        [storageKey]: { ...kecState, mode: 'done', currentIndex: kecState.queue.length, results, lastUpdated: Date.now() }
+      });
+      console.log(`[BKB-Batch] Selesai (tanpa kecamatan) ${kecState.kabName}`);
+      return;
+    }
+
+    // Loop setiap kecamatan
+    for (; currentIndex < kecState.queue.length; currentIndex++) {
+      const kecEntry = kecState.queue[currentIndex];
+      if (!kecEntry || !kecEntry.name) continue;
+
+      console.log(`[BKB-Batch] ${kecState.kabName} → kec ${currentIndex + 1}/${kecState.queue.length}: ${kecEntry.name}`);
+
+      const kecDropdown = await waitForDropdown('Kecamatan', 3);
+      if (!kecDropdown) {
+        console.warn(`[BKB-Batch] Dropdown Kecamatan tidak ditemukan: ${kecEntry.name}`);
+        results.push({ kota: kecEntry.name, total: 'N/A', update: 'N/A', belum: 'N/A' });
+      } else {
+        const selected = await bukaDanPilihPadaDropdown(kecDropdown, kecEntry.name);
+        if (!selected) {
+          console.warn(`[BKB-Batch] Gagal pilih ${kecEntry.name}`);
+          results.push({ kota: kecEntry.name, total: 'N/A', update: 'N/A', belum: 'N/A' });
+        } else {
+          await wait(250);
+          if (cariButton) cariButton.click();
+          await waitForBkbDataReady(loopWaitMs);
+          await wait(200);
+          const values = await extractTotalUpdateBelum();
+          console.log(`[BKB-Batch] Data ${kecEntry.name}:`, values);
+          results.push({ kota: kecEntry.name, ...values });
+        }
+      }
+
+      // Tulis progress ke storage key per-tab
+      await chrome.storage.local.set({
+        [storageKey]: {
+          ...kecState,
+          mode: 'active',
+          currentIndex: currentIndex + 1,
+          results,
+          lastUpdated: Date.now()
+        }
+      });
+      await wait(500);
+    }
+
+    // Selesai — set mode done di key per-tab
+    await chrome.storage.local.set({
+      [storageKey]: {
+        ...kecState,
+        mode: 'done',
+        currentIndex,
+        results,
+        lastUpdated: Date.now()
+      }
+    });
+    console.log(`[BKB-Batch] Selesai ${kecState.kabName}:`, results.length, 'kecamatan');
+
+    // Update juga ke bkbMonitoringBatch untuk persistensi jangka panjang
+    const batchData = await new Promise(r =>
+      chrome.storage.local.get(['bkbMonitoringBatch'], res => r(res.bkbMonitoringBatch || null))
+    );
+    if (batchData && Array.isArray(batchData.plan)) {
+      const myPlanIndex = typeof kecState.planIndex === 'number' ? kecState.planIndex : -1;
+      if (myPlanIndex >= 0 && batchData.plan[myPlanIndex]) {
+        batchData.plan[myPlanIndex].status = 'done';
+        batchData.plan[myPlanIndex].results = results;
+        batchData.plan[myPlanIndex].currentIndex = currentIndex;
+      }
+      await chrome.storage.local.set({ bkbMonitoringBatch: batchData });
+    }
+
+    // Kirim pesan untuk menutup tab ini saja tanpa membuka tab baru (karena semua tab sudah dibuka sekaligus di awal)
+    chrome.runtime.sendMessage({
+      action: 'openNextBatchTab',
+      nextKecState: null,
+      nextStorageKey: null,
+      closeTabId: tab.id
+    });
+  }
+
+
 
 
   // === HANDLE POPUP, STORAGE, DLL (kode lama tetap) ===
+
 
   // Fitur lama: Handle popup Rekap/Detail
   async function handlePopup(reportType, url, kota, downloadQueue, currentIndex, state = { blobDetected: false }) {
@@ -578,27 +801,109 @@
     return null;
   }
 
-  const monitorState = await waitForMonitorState();
+  // ── CEK BATCH DULU: bkbMonitoringKec_<tabId> (mode sequential batch) ──
+  // Harus dicek sebelum bkbMonitoring agar state lama tidak mengganggu
+  const kecBatchKey = `bkbMonitoringKec_${tab.id}`;
+  let kecBatchState = null;
+  {
+    // Debug: print semua keys di storage untuk mencari tahu mismatch
+    const allStorage = await new Promise(r => chrome.storage.local.get(null, r));
+    console.log(`[BKB-Batch-Debug] tab.id=${tab.id}, kecBatchKey=${kecBatchKey}`);
+    console.log(`[BKB-Batch-Debug] Storage keys:`, Object.keys(allStorage));
+    if (allStorage[kecBatchKey]) {
+      console.log(`[BKB-Batch-Debug] Found direct key in storage! Mode:`, allStorage[kecBatchKey].mode);
+    }
 
-  if (monitorState) {
-    console.log('[content] found monitorState', monitorState);
+    const pollStart = Date.now();
+    while (Date.now() - pollStart < 10000) {
+      const found = await new Promise(r =>
+        chrome.storage.local.get([kecBatchKey], res => r(res[kecBatchKey] || null))
+      );
+      if (found && found.mode === 'active') { kecBatchState = found; break; }
+      await wait(300);
+    }
+  }
+  
+  if (!kecBatchState) {
+    // FALLBACK: Cek global bkbMonitoringBatch jika key tab-specific tidak ketemu (e.g. karena tab ID mismatch)
+    const batchData = await new Promise(r =>
+      chrome.storage.local.get(['bkbMonitoringBatch'], res => r(res.bkbMonitoringBatch || null))
+    );
+    if (batchData && batchData.plan) {
+      const activeItem = batchData.plan.find(p => p.status === 'active') || batchData.plan[batchData.currentKabIndex];
+      if (activeItem && activeItem.status !== 'done') {
+        console.log(`[BKB-Batch-Fallback] Menggunakan data dari bkbMonitoringBatch untuk kab: ${activeItem.kabName}`);
+        kecBatchState = {
+          mode: 'active',
+          kabId: activeItem.kabId,
+          kabName: activeItem.kabName,
+          targetRoute: batchData.targetRoute,
+          initialWaitMs: batchData.initialWaitMs,
+          loopWaitMs: batchData.loopWaitMs,
+          currentIndex: activeItem.currentIndex || 0,
+          queue: activeItem.queue,
+          results: activeItem.results || [],
+          planIndex: activeItem.planIndex,
+          lastUpdated: Date.now()
+        };
+        // Tulis key tab-specific agar tersinkronisasi
+        await chrome.storage.local.set({ [kecBatchKey]: kecBatchState });
+      }
+    }
+  }
 
-    const targetHash = monitorState.targetRoute || '/kegiatan/kelompok_bkb';
+
+  if (kecBatchState) {
+    console.log(`[content] found kecBatchState for tab ${tab.id}:`, kecBatchState.kabName);
+    const targetHash = kecBatchState.targetRoute || '/kegiatan/kelompok_bkb';
+
+    // Tunggu URL sampai sesuai target (max 20s)
     if (!location.hash.includes(targetHash)) {
-      console.log('[content] URL hash belum target, menunggu sampai 15s..', location.hash);
       const start = Date.now();
-      while (Date.now() - start < 15000 && !location.hash.includes(targetHash)) {
+      while (Date.now() - start < 20000 && !location.hash.includes(targetHash)) {
         await wait(300);
       }
     }
 
     if (location.hash.includes(targetHash)) {
-      console.log(`🟢 Monitoring SIGA trigger (target ${targetHash})`);
+      console.log(`🟢 Batch Kec Monitoring aktif di tab ${tab.id}: ${kecBatchState.kabName}`);
+      try {
+        await handleBkbKecMonitoringLoop(kecBatchState, kecBatchKey);
+      } catch (e) {
+        console.error(`[BKB-Batch] Error di tab ${tab.id} (${kecBatchState.kabName}):`, e);
+        await chrome.storage.local.set({
+          [kecBatchKey]: { ...kecBatchState, mode: 'done', lastUpdated: Date.now() }
+        });
+        // Tetap chain ke next
+        chrome.runtime.sendMessage({
+          action: 'openNextBatchTab',
+          nextKecState: null,
+          nextStorageKey: null,
+          closeTabId: tab.id
+        }).catch(() => {});
+      }
+    } else {
+      console.warn(`[content] Batch kec: URL target ${targetHash} belum tercapai. Menunggu navigasi.`);
+    }
+    return;
+  }
+
+  // ── Single-tab monitoring: bkbMonitoring ──
+  const monitorState = await waitForMonitorState(3000);
+  if (monitorState) {
+    const targetHash = monitorState.targetRoute || '/kegiatan/kelompok_bkb';
+    if (!location.hash.includes(targetHash)) {
+      const start = Date.now();
+      while (Date.now() - start < 15000 && !location.hash.includes(targetHash)) {
+        await wait(300);
+      }
+    }
+    if (location.hash.includes(targetHash)) {
+      console.log(`🟢 Monitoring SIGA single-tab trigger (${targetHash})`);
       await handleBkbMonitoringLoop(monitorState);
       return;
     }
-
-    console.log(`🟡 Monitoring SIGA aktif tapi URL target ${targetHash} belum, tidak lanjut sekarang.`);
+    console.log(`🟡 Single-tab monitoring aktif tapi URL belum match.`);
     return;
   }
 
@@ -1030,17 +1335,23 @@
     {
       const hash = getUrlHash(url);
       const { key, existing: fromStorage } = await getKeyAndExisting(hash, downloadQueue, storage?.progressKey);
-      if (fromStorage) {
-        fromStorage.status = downloadOk ? "success" : "fail";
-        if (downloadOk) {
-          console.log('✅ File dikonfirmasi selesai didownload ke disk.');
-        } else {
-          console.warn('⚠️ Download timeout/interrupted — tandai fail.');
-        }
-        chrome.storage.local.set({ [key]: fromStorage }, () => {
-          chrome.runtime.sendMessage({ action: "refresh_download_status" });
-        });
+      // Fallback: jika fromStorage null (belum ada di storage), buat objek baru agar status tetap tersimpan
+      const finalData = fromStorage || {
+        url,
+        status: 'downloading',
+        totalFiles: downloadQueue.length,
+        filesCompleted: currentIndex + 1,
+        fileAkhir: kota || 'Provinsi'
+      };
+      finalData.status = downloadOk ? "success" : "fail";
+      if (downloadOk) {
+        console.log('✅ File dikonfirmasi selesai didownload ke disk.');
+      } else {
+        console.warn('⚠️ Download timeout/interrupted — tandai fail.');
       }
+      chrome.storage.local.set({ [key]: finalData }, () => {
+        chrome.runtime.sendMessage({ action: "refresh_download_status" });
+      });
     }
 
   } else {
@@ -1064,23 +1375,19 @@
         }
       }, 500);
     } else {
-      // Cek status akhir di storage sebelum memutuskan menutup tab
-      const finalHash = getUrlHash(url);
+      // downloadOk sudah diketahui dari waitForDownloadComplete — gunakan langsung
+      // agar tidak ada race condition antara storage.set() dan storage.get() di bawah
       console.log("⏳ Menunggu download selesai sebelum menutup tab...");
 
-      // Tunggu sesuai setting closeDelay (default 10 detik) sebelum menutup tab
       chrome.storage.local.get('closeDelay', (res) => {
         const waitMs = ((res.closeDelay || 10) * 1000);
         console.log(`⏳ Menunggu ${res.closeDelay || 10} detik sebelum menutup tab...`);
-        setTimeout(async () => {
-          const { key, existing: finalData } = await getKeyAndExisting(finalHash, downloadQueue, storage?.progressKey);
-          if (finalData && finalData.status === 'success') {
-            console.log("🎉 Semua proses selesai (SUCCESS) - menutup tab otomatis dalam 3 detik...");
-            setTimeout(() => chrome.runtime.sendMessage({ action: 'closeTab' }), 3000);
-          } else {
-            console.log("🚫 Proses selesai namun status bukan success (", finalData ? finalData.status : 'unknown', ") - tab dibiarkan terbuka untuk inspeksi.");
-          }
-        }, waitMs);
+        if (downloadOk) {
+          console.log("🎉 Semua proses selesai (SUCCESS) - menutup tab otomatis dalam", (waitMs / 1000 + 3), "detik...");
+          setTimeout(() => chrome.runtime.sendMessage({ action: 'closeTab' }), waitMs + 3000);
+        } else {
+          console.log("🚫 Download tidak terkonfirmasi (timeout/interrupted) - tab dibiarkan terbuka untuk inspeksi.");
+        }
       });
     }
   } catch (e) {

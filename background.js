@@ -292,6 +292,74 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true;
     }
 
+    // 9.5) Start Batch Automation: popup request buka banyak tab paralel staggered
+    if (message.action === 'startBatchAutomation') {
+      const { initialTabsCount } = message;
+      // Berikan respons segera agar kanal pesan ditutup dengan bersih tanpa mengganggu eksekusi latar belakang
+      sendResponse({ ok: true });
+
+      chrome.storage.local.get(['bkbMonitoringBatch'], (res) => {
+        const batchMeta = res.bkbMonitoringBatch;
+        const plan = batchMeta.plan;
+        // Gunakan Rantai Pembuatan Tab (Chained Tab Creation) agar stabil 100% tanpa terkena throttling browser atau suspend
+        const createTabChained = (index) => {
+          if (index >= initialTabsCount) return;
+          
+          const kab = plan[index];
+          const url = `https://newsiga-siga.bkkbn.go.id/${batchMeta.targetRoute}`;
+          
+          chrome.tabs.create({ url, active: false }, (tab) => {
+            if (tab && tab.id) {
+              chrome.storage.local.set({
+                [`bkbMonitoringKec_${tab.id}`]: {
+                  mode: 'active',
+                  kabId: kab.kabId,
+                  kabName: kab.kabName,
+                  targetRoute: batchMeta.targetRoute,
+                  initialWaitMs: batchMeta.initialWaitMs,
+                  loopWaitMs: batchMeta.loopWaitMs,
+                  currentIndex: 0,
+                  queue: kab.queue,
+                  results: [],
+                  planIndex: index,
+                  lastUpdated: Date.now()
+                }
+              }, () => {
+                // Lanjutkan rantai setelah data storage berhasil ditulis
+                createTabChained(index + 1);
+              });
+            } else {
+              // Jika terjadi error pada pembuatan tab, tetap lanjutkan antrean
+              createTabChained(index + 1);
+            }
+          });
+        };
+
+        // Mulai rantai pembuatan dari indeks 0
+        createTabChained(0);
+      });
+      return true;
+    }
+
+    // 9) Sequential Batch: content.js buka tab berikutnya lalu tutup dirinya
+    if (message.action === 'openNextBatchTab') {
+      const { nextKecState, nextStorageKey, closeTabId } = message;
+      if (!nextKecState || !nextStorageKey) {
+        if (closeTabId) chrome.tabs.remove(closeTabId).catch(() => {});
+        sendResponse({ ok: true });
+        return true;
+      }
+      const url = `https://newsiga-siga.bkkbn.go.id/${nextKecState.targetRoute || '#/kegiatan/kelompok_bkb'}`;
+      chrome.tabs.create({ url, active: true }, (newTab) => {
+        if (!newTab || !newTab.id) { sendResponse({ ok: false }); return; }
+        chrome.storage.local.set({ [nextStorageKey.replace('NEWTABID', newTab.id)]: { ...nextKecState, mode: 'active' } }, () => {
+          if (closeTabId) setTimeout(() => chrome.tabs.remove(closeTabId).catch(() => {}), 1500);
+          sendResponse({ ok: true, newTabId: newTab.id });
+        });
+      });
+      return true;
+    }
+
     // default
     sendResponse({ ok: false, error: "unknown action" });
     return true;

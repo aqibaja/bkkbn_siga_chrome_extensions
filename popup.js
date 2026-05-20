@@ -938,6 +938,26 @@ function setupReset(buttonId, tabName) {
 setupReset('reset-tahunan', 'tahunan');
 setupReset('reset-bulanan', 'bulanan');
 
+// ──────────────────────────────────────────────────────────
+// MONITORING K0 — Mode Kecamatan
+// ──────────────────────────────────────────────────────────
+
+/**
+ * Build queue berisi semua kecamatan dari satu kabupaten.
+ * Setiap entry: { id, name, kabId, kabName, isKecamatan: true }
+ */
+function buildKecamatanQueue(kabId) {
+  const kabCity = cities.find(c => c.id === kabId);
+  const kecList = kecamatanData[kabId] || [];
+  return kecList.map((kecName, idx) => ({
+    id: `${kabId}-${idx}`,
+    name: kecName,       // contoh: "04 - SEULIMEUM"
+    kabId,
+    kabName: kabCity ? kabCity.name : kabId,
+    isKecamatan: true
+  }));
+}
+
 // BKB monitoring panel utilities
 function setBkbMonitoringStatus(message) {
   const el = document.getElementById('monitoring-k0-status');
@@ -978,10 +998,178 @@ function renderBkbMonitoringResults(results) {
 function setupBkbMonitoring() {
   const startBtn = document.getElementById('start-monitoring-k0');
   const resetBtn = document.getElementById('reset-monitoring-k0');
+  const kabGroup = document.getElementById('monitoring-kab-group');
+  const kabSelect = document.getElementById('monitoring-kab');
+  const kecInfo = document.getElementById('monitoring-kec-info');
+  const modeProvRadio = document.getElementById('monitoring-mode-prov');
+  const modeKecRadio = document.getElementById('monitoring-mode-kec');
+  const modeBatchRadio = document.getElementById('monitoring-mode-batch');
+  const batchGroup = document.getElementById('monitoring-batch-group');
+  const batchProgressEl = document.getElementById('monitoring-batch-progress');
 
+  let lastActiveKabId = null;
+
+  // ── Populate dropdown kabupaten dari array cities ──
+
+  if (kabSelect) {
+    kabSelect.innerHTML = '';
+    cities.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c.id;
+      opt.textContent = c.name;
+      kabSelect.appendChild(opt);
+    });
+  }
+
+  // ── Update info jumlah kecamatan saat kabupaten dipilih ──
+  function updateKecInfo() {
+    if (!kecInfo || !kabSelect) return;
+    const kabId = kabSelect.value;
+    const count = (kecamatanData[kabId] || []).length;
+    kecInfo.textContent = count > 0
+      ? `✔ ${count} kecamatan akan dimonitor`
+      : '⚠ Data kecamatan tidak tersedia untuk kabupaten ini';
+    kecInfo.style.color = count > 0 ? '#2a7a2a' : '#a00';
+  }
+
+  if (kabSelect) {
+    kabSelect.addEventListener('change', () => { updateKecInfo(); saveUserPrefs(); });
+    updateKecInfo();
+  }
+
+  // ── Toggle panel sesuai mode ──
+  function onModeChange() {
+    const isKec = modeKecRadio && modeKecRadio.checked;
+    const isBatch = modeBatchRadio && modeBatchRadio.checked;
+    if (kabGroup) kabGroup.style.display = isKec ? 'block' : 'none';
+    if (batchGroup) batchGroup.style.display = isBatch ? 'block' : 'none';
+    if (isKec) updateKecInfo();
+    saveUserPrefs();
+  }
+
+  if (modeProvRadio) modeProvRadio.addEventListener('change', onModeChange);
+  if (modeKecRadio) modeKecRadio.addEventListener('change', onModeChange);
+  if (modeBatchRadio) modeBatchRadio.addEventListener('change', onModeChange);
+
+  // ── Render progress batch per kabupaten (baca dari plan) ──
+  function renderBatchProgress(batchData) {
+    const listEl = document.getElementById('monitoring-batch-progress-list');
+    if (!listEl || !batchData) return;
+
+    const plan = batchData.plan || [];
+    const rows = plan.map(p => {
+      const total = (p.queue || []).length;
+      const done = (p.results || []).length;
+      const status = p.status || 'pending';
+      const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+      const statusIcon = status === 'done' ? '✅' : status === 'active' ? '⏳' : '⏸';
+      const barFill = status === 'done' ? '#18af34' : status === 'active' ? '#484dde' : '#ccc';
+      const activeAttr = status === 'active' ? 'id="batch-progress-active"' : '';
+      return `
+        <div ${activeAttr} style="margin-bottom:6px; padding: 2px 4px; border-radius: 4px; ${status === 'active' ? 'background: rgba(72, 77, 222, 0.08);' : ''}">
+          <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:2px;">
+            <span>${statusIcon} <strong>${p.kabName}</strong></span>
+            <span>${done}/${total} kec</span>
+          </div>
+          <div style="background:#e0e0e0;border-radius:4px;height:8px;overflow:hidden;">
+            <div style="background:${barFill};height:100%;width:${pct}%;transition:width 0.3s;"></div>
+          </div>
+        </div>`;
+    });
+
+    listEl.innerHTML = rows.join('');
+    if (batchProgressEl) batchProgressEl.style.display = 'block';
+
+    // Auto scroll kabupaten yang aktif ke dalam view HANYA saat berganti kabupaten (agar tidak mengganggu scroll manual user)
+    const activeItem = plan.find(p => p.status === 'active');
+    if (activeItem && activeItem.kabId !== lastActiveKabId) {
+      lastActiveKabId = activeItem.kabId;
+      const activeEl = document.getElementById('batch-progress-active');
+      if (activeEl) {
+        activeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }
+  }
+
+
+  // ── refreshStatus: poll bkbMonitoring (single-tab) + bkbMonitoringBatch (sequential) ──
   const refreshStatus = async () => {
-    chrome.storage.local.get('bkbMonitoring', (data) => {
-      const st = data.bkbMonitoring || null;
+    chrome.storage.local.get(null, (all) => {
+      const batch = all.bkbMonitoringBatch || null;
+      if (batch && Array.isArray(batch.plan) && batch.plan.length > 0) {
+        const plan = batch.plan;
+
+        // Overlay data live dari SEMUA tab paralel (bkbMonitoringKec_<tabId>) secara bebas write-collision
+        const activeKecKeys = Object.keys(all).filter(k => k.startsWith('bkbMonitoringKec_'));
+        
+        // Buat map kabId -> tabState paling baru
+        const kabMap = {};
+        activeKecKeys.forEach(k => {
+          const tabState = all[k];
+          if (tabState && tabState.kabId) {
+            const existing = kabMap[tabState.kabId];
+            if (!existing || (tabState.lastUpdated || 0) > (existing.lastUpdated || 0)) {
+              kabMap[tabState.kabId] = tabState;
+            }
+          }
+        });
+
+        // Sinkronkan plan item secara dinamis dari map tabState
+        plan.forEach(p => {
+          const tabState = kabMap[p.kabId];
+          if (tabState) {
+            p.results = tabState.results || [];
+            p.currentIndex = tabState.currentIndex || 0;
+            p.status = tabState.mode === 'done' ? 'done' : 'active';
+          } else {
+            p.status = 'pending';
+          }
+        });
+
+        renderBatchProgress(batch);
+
+        const doneCount = plan.filter(p => p.status === 'done').length;
+        const activeItems = plan.filter(p => p.status === 'active');
+        const pendingItems = plan.filter(p => p.status === 'pending');
+        
+        let statusText = `Batch: ${doneCount}/${plan.length} selesai`;
+        if (activeItems.length > 0) {
+          statusText += ` (${activeItems.length} aktif)`;
+        }
+        if (pendingItems.length > 0) {
+          statusText += ` [Menunggu: ${pendingItems.length}]`;
+        }
+        setBkbMonitoringStatus(statusText);
+        if (startBtn) startBtn.disabled = doneCount < plan.length;
+
+        // Update textarea dan preview secara REAL-TIME agar user tidak perlu menunggu semua selesai
+        const tsvLines = ['Kabupaten\tKecamatan\tTotal\tUpdate\tBelum'];
+        const previewLines = [];
+        plan.forEach(p => {
+          (p.results || []).forEach(r => {
+            tsvLines.push(`${p.kabName}\t${r.kota}\t${r.total ?? ''}\t${r.update ?? ''}\t${r.belum ?? ''}`);
+            previewLines.push(`${p.kabName} / ${r.kota} → Total: ${r.total} | Update: ${r.update} | Belum: ${r.belum}`);
+          });
+        });
+
+        const outEl = document.getElementById('monitoring-k0-output');
+        const resEl = document.getElementById('monitoring-k0-results');
+        if (outEl && tsvLines.length > 1) {
+          outEl.value = tsvLines.join('\n');
+        } else if (outEl && tsvLines.length === 1) {
+          outEl.value = ''; // Kosongkan jika belum ada data
+        }
+        
+        if (resEl && previewLines.length > 0) {
+          resEl.textContent = previewLines.join('\n').slice(0, 1000) + (previewLines.length > 40 ? '\n...' : '');
+        } else if (resEl) {
+          resEl.textContent = 'Belum ada data.';
+        }
+        return;
+      }
+
+      // Poll single-tab monitoring
+      const st = all.bkbMonitoring || null;
       if (!st) {
         setBkbMonitoringStatus('Menunggu');
         renderBkbMonitoringResults([]);
@@ -989,11 +1177,14 @@ function setupBkbMonitoring() {
         return;
       }
       const { mode, currentIndex, queue, results } = st;
+      const isKecMode = queue && queue.length > 0 && queue[0].isKecamatan;
+      const unitLabel = isKecMode ? 'kecamatan' : 'kabupaten';
       if (mode === 'active') {
-        setBkbMonitoringStatus(`Jalankan: ${currentIndex || 0}/${(queue || []).length} kabupaten`);
+        const kabLabel = isKecMode && queue[0].kabName ? ` (${queue[0].kabName})` : '';
+        setBkbMonitoringStatus(`Berjalan: ${currentIndex || 0}/${(queue || []).length} ${unitLabel}${kabLabel}`);
         if (startBtn) startBtn.disabled = true;
       } else if (mode === 'done') {
-        setBkbMonitoringStatus(`Selesai: ${results ? results.length : 0} kabupaten`);
+        setBkbMonitoringStatus(`Selesai: ${results ? results.length : 0} ${unitLabel}`);
         if (startBtn) startBtn.disabled = false;
       } else {
         setBkbMonitoringStatus('Menunggu');
@@ -1003,17 +1194,89 @@ function setupBkbMonitoring() {
     });
   };
 
+  // ── Fungsi batch: sequential (1 tab aktif, chain ke tab berikutnya) ──
+  async function startBatchKecMonitoring(targetRoute, initialWaitMs, loopWaitMs) {
+    setBkbMonitoringStatus('Menyiapkan batch parallel queue...');
+
+    const plan = cities
+      .filter(c => (kecamatanData[c.id] || []).length > 0)
+      .map((kab, i) => ({
+        planIndex: i,
+        kabId: kab.id,
+        kabName: kab.name,
+        queue: buildKecamatanQueue(kab.id),
+        status: 'pending',
+        currentIndex: 0,
+        results: []
+      }));
+
+    if (plan.length === 0) {
+      setBkbMonitoringStatus('Tidak ada data kecamatan tersedia.');
+      if (startBtn) startBtn.disabled = false;
+      return;
+    }
+
+    // Langsung aktifkan semua kabupaten untuk dibuka secara bersamaan
+    const initialTabsCount = plan.length;
+
+    const batchMeta = {
+      plan, targetRoute, initialWaitMs, loopWaitMs,
+      startedAt: Date.now()
+    };
+
+    for (let i = 0; i < initialTabsCount; i++) {
+      plan[i].status = 'active';
+    }
+    batchMeta.plan = plan;
+    await new Promise(r => chrome.storage.local.set({ bkbMonitoringBatch: batchMeta }, r));
+
+    // Kirim pesan ke background script untuk membuka SEMUA tab kabupaten secara staggered
+    // agar browser tidak macet tetapi langsung memproses semuanya secara simultan.
+    chrome.runtime.sendMessage({
+      action: 'startBatchAutomation',
+      initialTabsCount
+    });
+
+    setBkbMonitoringStatus(`Batch: Membuka ${plan.length} kabupaten sekaligus...`);
+    if (startBtn) startBtn.disabled = true;
+  }
+
+
+  // ── Tombol Mulai ──
   if (startBtn) {
     startBtn.addEventListener('click', async () => {
       setBkbMonitoringStatus('Menyiapkan...');
       if (startBtn) startBtn.disabled = true;
-      const queue = cities.map(c => ({ id: c.id, name: c.name }));
-      // set initial state terlebih dahulu
+
       const targetRoute = document.getElementById('monitoring-target')?.value || '#/kegiatan/kelompok_bkb';
       const initialWaitSeconds = Number(document.getElementById('monitoring-initial-wait')?.value || 30);
       const loopWaitSeconds = Number(document.getElementById('monitoring-loop-wait')?.value || 8);
       const initialWaitMs = Math.max(1000, initialWaitSeconds * 1000);
       const loopWaitMs = Math.max(1000, loopWaitSeconds * 1000);
+
+      const isBatchMode = modeBatchRadio && modeBatchRadio.checked;
+      const isKecMode = modeKecRadio && modeKecRadio.checked;
+
+      // ── Mode Paralel Batch ──
+      if (isBatchMode) {
+        await startBatchKecMonitoring(targetRoute, initialWaitMs, loopWaitMs);
+        return;
+      }
+
+      // ── Mode single-tab (Provinsi / Per Kecamatan) ──
+      let queue;
+      if (isKecMode) {
+        const kabId = kabSelect ? kabSelect.value : null;
+        if (!kabId || (kecamatanData[kabId] || []).length === 0) {
+          alert('⚠ Data kecamatan tidak tersedia untuk kabupaten yang dipilih.');
+          if (startBtn) startBtn.disabled = false;
+          setBkbMonitoringStatus('Menunggu');
+          return;
+        }
+        queue = buildKecamatanQueue(kabId);
+      } else {
+        queue = cities.map(c => ({ id: c.id, name: c.name, isKecamatan: false }));
+      }
 
       chrome.storage.local.set({
         bkbMonitoring: {
@@ -1036,7 +1299,6 @@ function setupBkbMonitoring() {
             if (startBtn) startBtn.disabled = false;
             return;
           }
-
           chrome.storage.local.get(['bkbMonitoring'], (existing) => {
             const targetRouteFromState = existing?.bkbMonitoring?.targetRoute || '#/kegiatan/kelompok_bkb';
             const initialWaitMsFromState = existing?.bkbMonitoring?.initialWaitMs || initialWaitMs;
@@ -1063,9 +1325,9 @@ function setupBkbMonitoring() {
     });
   }
 
+  // ── Salin hasil single-tab ──
   const copyBtn = document.getElementById('copy-bkb-result');
   const copyNote = document.getElementById('copy-bkb-result-note');
-
   if (copyBtn) {
     copyBtn.addEventListener('click', () => {
       const outEl = document.getElementById('monitoring-k0-output');
@@ -1080,21 +1342,89 @@ function setupBkbMonitoring() {
     });
   }
 
+  // ── Salin semua hasil batch ──
+  const copyBatchBtn = document.getElementById('copy-batch-result');
+  const copyBatchNote = document.getElementById('copy-batch-note');
+  if (copyBatchBtn) {
+    copyBatchBtn.addEventListener('click', () => {
+      // Coba baca dari textarea yang sudah diisi refreshStatus (paling reliable)
+      const outEl = document.getElementById('monitoring-k0-output');
+      if (outEl && outEl.value && outEl.value.trim() !== '') {
+        outEl.select();
+        document.execCommand('copy');
+        if (copyBatchNote) copyBatchNote.textContent = `Tersalin! (${outEl.value.split('\n').length - 1} baris data)`;
+        setTimeout(() => { if (copyBatchNote) copyBatchNote.textContent = ''; }, 3000);
+        return;
+      }
+
+      // Fallback: rebuild dari storage jika textarea belum terisi
+      chrome.storage.local.get(null, (all) => {
+        const batch = all.bkbMonitoringBatch;
+        if (!batch || !batch.tabs || batch.tabs.length === 0) {
+          if (copyBatchNote) copyBatchNote.textContent = '⚠ Belum ada data batch.';
+          return;
+        }
+        const lines = ['Kabupaten\tKecamatan\tTotal\tUpdate\tBelum'];
+        batch.tabs.forEach(t => {
+          const st = all[`bkbMonitoringKec_${t.tabId}`];
+          if (!st || !Array.isArray(st.results)) return;
+          st.results.forEach(r => {
+            lines.push(`${t.kabName}\t${r.kota}\t${r.total ?? ''}\t${r.update ?? ''}\t${r.belum ?? ''}`);
+          });
+        });
+        if (lines.length <= 1) {
+          if (copyBatchNote) copyBatchNote.textContent = '⚠ Hasil kosong, coba tunggu sebentar.';
+          return;
+        }
+        const tsv = lines.join('\n');
+        // Isi textarea dulu, lalu copy
+        if (outEl) {
+          outEl.value = tsv;
+          outEl.select();
+          document.execCommand('copy');
+          if (copyBatchNote) copyBatchNote.textContent = `Tersalin! (${lines.length - 1} baris data)`;
+          setTimeout(() => { if (copyBatchNote) copyBatchNote.textContent = ''; }, 3000);
+        }
+      });
+    });
+  }
+
+  // ── Reset batch ──
+  const resetBatchBtn = document.getElementById('reset-batch-btn');
+  if (resetBatchBtn) {
+    resetBatchBtn.addEventListener('click', () => {
+      chrome.storage.local.get(null, (all) => {
+        const keysToRemove = ['bkbMonitoringBatch'];
+        Object.keys(all).forEach(k => {
+          if (k.startsWith('bkbMonitoringKec_')) {
+            keysToRemove.push(k);
+          }
+        });
+        chrome.storage.local.remove(keysToRemove, () => {
+          if (batchProgressEl) batchProgressEl.style.display = 'none';
+          setBkbMonitoringStatus('Batch direset. Tekan Mulai.');
+          if (startBtn) startBtn.disabled = false;
+        });
+      });
+    });
+  }
+
+  // ── Reset single-tab monitoring ──
   if (resetBtn) {
     resetBtn.addEventListener('click', () => {
       chrome.storage.local.remove('bkbMonitoring', () => {
         setBkbMonitoringStatus('Direset. Tekan Mulai.');
         renderBkbMonitoringResults([]);
         if (startBtn) startBtn.disabled = false;
+        if (modeProvRadio) { modeProvRadio.checked = true; onModeChange(); }
       });
     });
   }
 
+  // Simpan preferensi saat setting berubah
   ['monitoring-target', 'monitoring-initial-wait', 'monitoring-loop-wait'].forEach(id => {
     const el = document.getElementById(id);
-    if (el) {
-      el.addEventListener('change', saveUserPrefs);
-    }
+    if (el) el.addEventListener('change', saveUserPrefs);
   });
 
   setInterval(refreshStatus, 1200);
@@ -1104,6 +1434,7 @@ function setupBkbMonitoring() {
 setupBkbMonitoring();
 
 // Form submit handlers
+
 function extractNumericCode(label) {
   if (!label) return '';
   const m = label.toString().trim().match(/^(\d+)/);
@@ -1972,7 +2303,10 @@ function saveUserPrefs() {
     activeTab: document.querySelector('.tab-button.active')?.getAttribute('data-tab') || 'tahunan',
     monitoringTarget: document.getElementById('monitoring-target')?.value || '#/kegiatan/kelompok_bkb',
     monitoringInitialWait: document.getElementById('monitoring-initial-wait')?.value || '30',
-    monitoringLoopWait: document.getElementById('monitoring-loop-wait')?.value || '8'
+    monitoringLoopWait: document.getElementById('monitoring-loop-wait')?.value || '8',
+    monitoringParallelLimit: document.getElementById('monitoring-parallel-limit')?.value || '3',
+    monitoringMode: document.querySelector('input[name="monitoring-mode"]:checked')?.value || 'provinsi',
+    monitoringKab: document.getElementById('monitoring-kab')?.value || ''
   };
   ['tahunan', 'bulanan'].forEach(tab => {
     prefs[`cities_${tab}`] = Array.from(
@@ -2024,9 +2358,37 @@ function restoreUserPrefs() {
     const monitoringTargetEl = document.getElementById('monitoring-target');
     const monitoringInitialEl = document.getElementById('monitoring-initial-wait');
     const monitoringLoopEl = document.getElementById('monitoring-loop-wait');
+    const monitoringParallelEl = document.getElementById('monitoring-parallel-limit');
     if (monitoringTargetEl && prefs.monitoringTarget) monitoringTargetEl.value = prefs.monitoringTarget;
     if (monitoringInitialEl && prefs.monitoringInitialWait) monitoringInitialEl.value = prefs.monitoringInitialWait;
     if (monitoringLoopEl && prefs.monitoringLoopWait) monitoringLoopEl.value = prefs.monitoringLoopWait;
+    if (monitoringParallelEl && prefs.monitoringParallelLimit) monitoringParallelEl.value = prefs.monitoringParallelLimit;
+
+
+    // Restore mode monitoring (provinsi / kecamatan)
+    if (prefs.monitoringMode) {
+      const modeRadio = document.querySelector(`input[name="monitoring-mode"][value="${prefs.monitoringMode}"]`);
+      if (modeRadio) {
+        modeRadio.checked = true;
+        // trigger visibility toggle
+        const kabGroup = document.getElementById('monitoring-kab-group');
+        if (kabGroup) kabGroup.style.display = prefs.monitoringMode === 'kecamatan' ? 'block' : 'none';
+      }
+    }
+    // Restore kabupaten terpilih
+    const kabSelectEl = document.getElementById('monitoring-kab');
+    if (kabSelectEl && prefs.monitoringKab) {
+      kabSelectEl.value = prefs.monitoringKab;
+      // update info kec count
+      const kecInfoEl = document.getElementById('monitoring-kec-info');
+      if (kecInfoEl) {
+        const count = (kecamatanData[prefs.monitoringKab] || []).length;
+        kecInfoEl.textContent = count > 0
+          ? `✔ ${count} kecamatan akan dimonitor`
+          : '⚠ Data kecamatan tidak tersedia';
+        kecInfoEl.style.color = count > 0 ? '#2a7a2a' : '#a00';
+      }
+    }
 
     // Restore simple fields & checkboxes untuk kedua tab
     ['tahunan', 'bulanan'].forEach(tab => {
