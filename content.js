@@ -406,6 +406,60 @@
     };
   }
 
+  // Deteksi & dismiss modal SweetAlert jika data kosong
+  function getSweetAlertModalText() {
+    const swal = document.querySelector('.swal2-container, .swal2-popup, .swal-modal, .sweet-alert, .swal-overlay');
+    return swal ? (swal.innerText || '') : '';
+  }
+
+  function dismissSweetAlertModal() {
+    const swal = document.querySelector('.swal2-container, .swal2-popup, .swal-modal, .sweet-alert, .swal-overlay');
+    if (swal) {
+      const okBtn = swal.querySelector('button.swal2-confirm, button.swal-button--confirm') 
+                    || [...swal.querySelectorAll('button')].find(btn => /ok|tutup|close|confirm/i.test(btn.textContent || ''));
+      if (okBtn) {
+        okBtn.click();
+        console.log('[BKB] SweetAlert Data Tidak Ditemukan ditutup otomatis.');
+        return true;
+      }
+    }
+    return false;
+  }
+
+  async function waitForKecamatanDataReady(timeout = 20000) {
+    const start = Date.now();
+    // Beri jeda kecil agar modal SweetAlert atau spinner loading sempat terpicu muncul di DOM
+    await wait(400);
+
+    while (Date.now() - start < timeout) {
+      // 1) Cek modal "Data tidak ditemukan"
+      const swalText = getSweetAlertModalText();
+      if (/tidak ditemukan|tidak\s*ada|kosong/i.test(swalText)) {
+        console.log('[BKB] Terdeteksi SweetAlert: Data tidak ditemukan.');
+        dismissSweetAlertModal();
+        await wait(500); // Tunggu animasi penutupan modal selesai
+        return { success: false, reason: 'nodata' };
+      }
+
+      // 2) Cek spinner loading
+      const loading = document.querySelector('.ant-spin, .spinner, [role="progressbar"], .loading, .loader');
+      
+      if (!loading) {
+        // Cek baris tabel atau data angka
+        const bodyText = document.body ? document.body.innerText : '';
+        const hasRows = document.querySelectorAll('table tbody tr').length > 0;
+        const hasNumeric = /total\s*[:\-]?\s*[\d\.,]+/i.test(bodyText);
+        if (hasRows || hasNumeric) {
+          return { success: true };
+        }
+      }
+      await wait(250);
+    }
+    
+    // Jika timeout tapi tidak ada modal nodata, anggap success dan coba baca tabel
+    return { success: true };
+  }
+
   async function waitForBkbDataReady(timeout = 20000) {
     const start = Date.now();
     while (Date.now() - start < timeout) {
@@ -487,10 +541,15 @@
           } else {
             await wait(250);
             if (cariButton) cariButton.click();
-            await waitForBkbDataReady(loopWaitMs);
+            const readyState = await waitForKecamatanDataReady(loopWaitMs);
             await wait(200);
-            const values = await extractTotalUpdateBelum();
-            results.push({ kota: kecEntry.name, ...values });
+            if (readyState && readyState.success === false && readyState.reason === 'nodata') {
+              console.log(`[BKB-Kec] Kecamatan ${kecEntry.name} terdeteksi kosong (tidak ada data).`);
+              results.push({ kota: kecEntry.name, total: 0, update: 0, belum: 0 });
+            } else {
+              const values = await extractTotalUpdateBelum();
+              results.push({ kota: kecEntry.name, ...values });
+            }
           }
         }
 
@@ -529,11 +588,16 @@
           cariButton.click();
         }
 
-        await waitForBkbDataReady(loopWaitMs);
+        const readyState = await waitForKecamatanDataReady(loopWaitMs);
         await wait(200);
 
-        const values = await extractTotalUpdateBelum();
-        results.push({ kota: kotaEntry.name, ...values });
+        if (readyState && readyState.success === false && readyState.reason === 'nodata') {
+          console.log(`[BKB] Kab/Kota ${kotaEntry.name} terdeteksi kosong (tidak ada data).`);
+          results.push({ kota: kotaEntry.name, total: 0, update: 0, belum: 0 });
+        } else {
+          const values = await extractTotalUpdateBelum();
+          results.push({ kota: kotaEntry.name, ...values });
+        }
 
         await chrome.storage.local.set({
           bkbMonitoring: {
@@ -616,7 +680,15 @@
     if (!kecDropdownTest) {
       console.warn(`[BKB-Batch] Halaman ini tidak punya dropdown Kecamatan! Ambil data level Kab/Kota saja.`);
       // Ambil data yang sudah ada (level Kab/Kota) sebagai satu baris
-      const values = await extractTotalUpdateBelum();
+      const swalText = getSweetAlertModalText();
+      let values;
+      if (/tidak ditemukan|tidak\s*ada|kosong/i.test(swalText)) {
+        console.log('[BKB-Batch] Terdeteksi SweetAlert pada level Kab/Kota: Data tidak ditemukan.');
+        dismissSweetAlertModal();
+        values = { total: 0, update: 0, belum: 0 };
+      } else {
+        values = await extractTotalUpdateBelum();
+      }
       console.log(`[BKB-Batch] Data Kab/Kota:`, values);
       results.push({ kota: kecState.kabName + ' (Level Kab)', ...values });
       await chrome.storage.local.set({
@@ -645,11 +717,16 @@
         } else {
           await wait(250);
           if (cariButton) cariButton.click();
-          await waitForBkbDataReady(loopWaitMs);
+          const readyState = await waitForKecamatanDataReady(loopWaitMs);
           await wait(200);
-          const values = await extractTotalUpdateBelum();
-          console.log(`[BKB-Batch] Data ${kecEntry.name}:`, values);
-          results.push({ kota: kecEntry.name, ...values });
+          if (readyState && readyState.success === false && readyState.reason === 'nodata') {
+            console.log(`[BKB-Batch] Kecamatan ${kecEntry.name} terdeteksi kosong (tidak ada data).`);
+            results.push({ kota: kecEntry.name, total: 0, update: 0, belum: 0 });
+          } else {
+            const values = await extractTotalUpdateBelum();
+            console.log(`[BKB-Batch] Data ${kecEntry.name}:`, values);
+            results.push({ kota: kecEntry.name, ...values });
+          }
         }
       }
 
