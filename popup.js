@@ -618,6 +618,9 @@ function renderDownloadTab() {
         `;
       } else if (statClass === "downloading") {
         actionButtons = `
+          <button class="retry-progress-btn" data-url="${item.url}" style="background:#ff9800; color:#fff; border:none; padding:6px 12px; border-radius:4px; cursor:pointer; font-size:12px; margin-right:6px;">
+            🔄 Retry
+          </button>
           <button class="cancel-btn" data-url="${item.url}" style="background:#e12121; color:#fff; border:none; padding:6px 12px; border-radius:4px; cursor:pointer; font-size:12px;">
             ✖ Cancel & Close Tab
           </button>
@@ -643,11 +646,18 @@ function renderDownloadTab() {
     });
     document.getElementById("download-progress-list").innerHTML = blocks.length > 0 ? blocks.join("\n") : "<p>Tidak ada proses download.</p>";
 
-    // Attach event listeners untuk tombol Retry dan Cancel
+    // Attach event listeners untuk tombol Retry (fail) dan Retry (progress) dan Cancel
     document.querySelectorAll('.retry-btn').forEach(btn => {
       btn.addEventListener('click', function () {
         const url = this.getAttribute('data-url');
         handleRetryFailedItems(url);
+      });
+    });
+
+    document.querySelectorAll('.retry-progress-btn').forEach(btn => {
+      btn.addEventListener('click', function () {
+        const url = this.getAttribute('data-url');
+        handleRetryProgressItem(url);
       });
     });
 
@@ -754,6 +764,54 @@ function handleCancelAndCloseTab(url) {
         alert('✅ Proses dibatalkan.');
         setTimeout(() => renderDownloadTab(), 800);
       });
+    }
+  });
+}
+
+// Handler untuk retry item yang masih berstatus PROGRESS (stuck/macet)
+function handleRetryProgressItem(url) {
+  if (!confirm(`Retry proses yang sedang berjalan (PROGRESS) untuk URL:\n${url}?\n\nIni akan mereload tab yang sedang berjalan dari posisi saat ini.`)) return;
+
+  chrome.storage.local.get(null, function (data) {
+    const autoKeys = Object.keys(data).filter(k => k.startsWith('auto_'));
+    let found = false;
+
+    for (const key of autoKeys) {
+      const autoData = data[key];
+      if (!autoData || !autoData.downloadQueue) continue;
+
+      // Cek apakah auto_ ini milik URL yang di-retry
+      const firstItem = autoData.downloadQueue[0];
+      if (!firstItem || firstItem.url !== url) continue;
+
+      found = true;
+      // Reset retryCount dan cancelled agar dapat berjalan kembali
+      chrome.storage.local.set({
+        [key]: {
+          ...autoData,
+          cancelled: false,
+          retryCount: 0
+        }
+      }, () => {
+        // Kirim pesan ke background untuk reload tab
+        chrome.runtime.sendMessage({
+          action: 'retryFailedUrl',
+          url: url,
+          targetKey: key
+        }, resp => {
+          if (resp && resp.success) {
+            alert('🔄 Tab sedang di-reload. Proses akan dilanjutkan dari posisi terakhir.');
+          } else {
+            alert('⚠️ Tidak bisa me-reload tab. Tab mungkin sudah tertutup. Coba Cancel lalu jalankan ulang.');
+          }
+          setTimeout(() => renderDownloadTab(), 800);
+        });
+      });
+      break;
+    }
+
+    if (!found) {
+      alert('Tab untuk URL ini tidak ditemukan (mungkin sudah tertutup).\nSilakan Cancel lalu jalankan ulang proses download.');
     }
   });
 }

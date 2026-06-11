@@ -151,6 +151,17 @@
     while (Date.now() - start < timeout) {
       control = findDropdownControl(labelText, fallbackIndex);
       if (control) return control;
+      // KUNCI: Jika elemen dropdown sebenarnya sudah ter-render di DOM, 
+      // jangan tunggu lama-lama, langsung gunakan fallback index.
+      const nodes = document.querySelectorAll('.css-yk16xz-control, div[role="combobox"], .ant-select-selector');
+      if (nodes.length > fallbackIndex) {
+        // Hanya cetak log sekali di awal jika mau
+        if (Date.now() - start < interval) {
+          console.log(`⏩ Label '${labelText}' tidak ada, langsung ambil kotak ke-${fallbackIndex + 1}.`);
+        }
+        return nodes[fallbackIndex];
+      }
+      
       await wait(interval);
     }
     return null; // biarkan caller yang handle fail
@@ -864,7 +875,13 @@
 
   console.log('[content] started in tab', tab, 'url', window.location.href, 'hash', window.location.hash);
 
+  const storage = await new Promise((resolve) =>
+    chrome.storage.local.get([key], (res) => resolve(res[key]))
+  );
+  const isAutoTab = !!storage;
+
   async function waitForMonitorState(timeout = 3000, interval = 200) {
+    if (isAutoTab) return null; // Skip waiting if this is an auto tab
     const start = Date.now();
     while (Date.now() - start < timeout) {
       const monitorState = await new Promise((resolve) =>
@@ -882,7 +899,8 @@
   // Harus dicek sebelum bkbMonitoring agar state lama tidak mengganggu
   const kecBatchKey = `bkbMonitoringKec_${tab.id}`;
   let kecBatchState = null;
-  {
+  
+  if (!isAutoTab) {
     // Debug: print semua keys di storage untuk mencari tahu mismatch
     const allStorage = await new Promise(r => chrome.storage.local.get(null, r));
     console.log(`[BKB-Batch-Debug] tab.id=${tab.id}, kecBatchKey=${kecBatchKey}`);
@@ -901,33 +919,33 @@
     }
   }
   
-  if (!kecBatchState) {
+  if (!kecBatchState && !isAutoTab) {
     // FALLBACK: Cek global bkbMonitoringBatch jika key tab-specific tidak ketemu (e.g. karena tab ID mismatch)
-    const batchData = await new Promise(r =>
-      chrome.storage.local.get(['bkbMonitoringBatch'], res => r(res.bkbMonitoringBatch || null))
-    );
-    if (batchData && batchData.plan) {
-      const activeItem = batchData.plan.find(p => p.status === 'active') || batchData.plan[batchData.currentKabIndex];
-      if (activeItem && activeItem.status !== 'done') {
-        console.log(`[BKB-Batch-Fallback] Menggunakan data dari bkbMonitoringBatch untuk kab: ${activeItem.kabName}`);
-        kecBatchState = {
-          mode: 'active',
-          kabId: activeItem.kabId,
-          kabName: activeItem.kabName,
-          targetRoute: batchData.targetRoute,
-          initialWaitMs: batchData.initialWaitMs,
-          loopWaitMs: batchData.loopWaitMs,
-          currentIndex: activeItem.currentIndex || 0,
-          queue: activeItem.queue,
-          results: activeItem.results || [],
-          planIndex: activeItem.planIndex,
-          lastUpdated: Date.now()
-        };
-        // Tulis key tab-specific agar tersinkronisasi
-        await chrome.storage.local.set({ [kecBatchKey]: kecBatchState });
+      const batchData = await new Promise(r =>
+        chrome.storage.local.get(['bkbMonitoringBatch'], res => r(res.bkbMonitoringBatch || null))
+      );
+      if (batchData && batchData.plan) {
+        const activeItem = batchData.plan.find(p => p.status === 'active') || batchData.plan[batchData.currentKabIndex];
+        if (activeItem && activeItem.status !== 'done') {
+          console.log(`[BKB-Batch-Fallback] Menggunakan data dari bkbMonitoringBatch untuk kab: ${activeItem.kabName}`);
+          kecBatchState = {
+            mode: 'active',
+            kabId: activeItem.kabId,
+            kabName: activeItem.kabName,
+            targetRoute: batchData.targetRoute,
+            initialWaitMs: batchData.initialWaitMs,
+            loopWaitMs: batchData.loopWaitMs,
+            currentIndex: activeItem.currentIndex || 0,
+            queue: activeItem.queue,
+            results: activeItem.results || [],
+            planIndex: activeItem.planIndex,
+            lastUpdated: Date.now()
+          };
+          // Tulis key tab-specific agar tersinkronisasi
+          await chrome.storage.local.set({ [kecBatchKey]: kecBatchState });
+        }
       }
     }
-  }
 
 
   if (kecBatchState) {
@@ -1001,14 +1019,10 @@
 
   chrome.storage.onChanged.addListener((changes, areaName) => {
     if (areaName !== 'local') return;
-    if (changes.bkbMonitoring) {
+    if (changes.bkbMonitoring && !isAutoTab) {
       handlePotentialMonitorState(changes.bkbMonitoring.newValue);
     }
   });
-
-  const storage = await new Promise((resolve) =>
-    chrome.storage.local.get([key], (res) => resolve(res[key]))
-  );
 
   if (!storage) {
     console.log('[content] tidak ada state auto_ maupun bkbMonitoring untuk tab ini, tidak ada tindakan.');
@@ -1049,7 +1063,8 @@
     console.log(`♻️ Retry ke-${retryCount} untuk kota: ${kota}`);
   }
 
-  await wait(500);
+  // Tunggu 3 detik agar halaman SIGA dan datanya termuat secara maksimal
+  await wait(3000);
 
   const isTahunan = storage.periode && /^\d{4}$/.test(storage.periode);
 
@@ -1216,6 +1231,8 @@
   const existingBlobs = new Set(
     [...document.querySelectorAll(blobSelectors.join(','))].map(el => el.href || el.src).filter(Boolean)
   );
+
+  let downloadOk = false;
 
   if (button) {
     button.click();
@@ -1406,7 +1423,7 @@
     console.log("✅ Blob terdeteksi — menunggu konfirmasi file selesai didownload ke disk...");
 
     // Tunggu sinyal nyata dari background bahwa file sudah selesai ditulis ke disk
-    const downloadOk = await downloadWatcher;
+    downloadOk = await downloadWatcher;
 
     // Update status final setelah download dikonfirmasi
     {
