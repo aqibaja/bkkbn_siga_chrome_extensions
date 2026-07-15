@@ -1681,6 +1681,86 @@ function setupFormSubmit(formId, tabName) {
       console.log('[DEBUG][popup] Queue to background:', queue);
 
       if ((selectedCities.length === 1 && (selectedKecamatan.length > 1 || hasDesaSelected)) || selectedCities.length > 1) {
+        // Cek mode eksekusi
+        const modeEksekusi = document.getElementById(`mode-eksekusi-${tabName}`)?.value || 'batch';
+        const batchSize = parseInt(document.getElementById(`batch-size-${tabName}`)?.value || '20', 10);
+
+        if (modeEksekusi === 'batch') {
+          console.log('[DEBUG][popup] Menggunakan mode Batch dengan ukuran:', batchSize);
+          resetDownloadProgress(() => {
+            switchToDownloadTab();
+            initializeDownloadProgress(queue).then(keys => {
+              const fullBatchQueue = [];
+              queue.forEach((item, idx) => {
+                const itemKabCode = item.kabCode || extractNumericCode(item.kota || '') || (selectedCities.length === 1 ? selectedCities[0] : '');
+                const itemKecamatan = item.kecamatan || kecamatan;
+                const kecCode = extractNumericCode(itemKecamatan);
+                const desaCode = extractNumericCode(item.desa || '');
+                
+                const dataSingle = {
+                  tab: tabName,
+                  submenu: activeSubmenuId,
+                  periode,
+                  kecamatan: itemKecamatan,
+                  jenisLaporan,
+                  selectedCities,
+                  downloadQueue: [item],
+                  urls,
+                  progressKey: keys[idx]
+                };
+
+                let payload = {
+                  menu: activeMenuId,
+                  submenu: activeSubmenuId,
+                  periode,
+                  kab: (item.kota || '').toString().replace(/^\d+\s*-\s*/, '').trim(),
+                  kabCode: itemKabCode,
+                  kec: itemKecamatan,
+                  kecCode,
+                  jenisLaporan,
+                  desaCode,
+                  sasaran: item.sasaran || detectSasaranFromUrl(item.url)
+                };
+
+                if (tabName === 'bulanan') {
+                  dataSingle.faskes = item.faskes || '';
+                  dataSingle.tahun = document.getElementById('tahun').value;
+                  payload.tahun = dataSingle.tahun;
+                  payload.faskes = item.faskes || '';
+                  payload.sasaran = item.sasaran || detectSasaranFromUrl(item.url) || '';
+                } else {
+                  dataSingle.desa = item.desa || '';
+                  dataSingle.rw = document.getElementById('rw-tahunan').value;
+                  dataSingle.sasaran = document.getElementById('sasaran-tahunan').value;
+                  payload.desa = item.desa || '';
+                  payload.rw = dataSingle.rw;
+                  payload.sasaran = dataSingle.sasaran || item.sasaran || detectSasaranFromUrl(item.url) || '';
+                }
+
+                // Pass the renameContext directly inside the downloadQueue item
+                dataSingle.downloadQueue[0].renameContext = payload;
+                fullBatchQueue.push(dataSingle);
+              });
+              
+              chrome.runtime.sendMessage({ 
+                action: 'startBatchDownload', 
+                batchQueue: fullBatchQueue, 
+                batchSize: batchSize 
+              }, (response) => {
+                if (response && response.success) {
+                  console.log('Proses download batch dimulai...');
+                } else {
+                  alert('Proses gagal atau tidak ada response.');
+                }
+              });
+            }).catch(err => {
+              console.error('Gagal inisialisasi progress keys:', err);
+            });
+          });
+          return;
+        }
+
+        // Mode Paralel (Lama)
         // Setiap item queue = 1 tab
         resetDownloadProgress(() => {
           switchToDownloadTab();
@@ -1780,80 +1860,103 @@ function setupFormSubmit(formId, tabName) {
         const ok = confirm(`Anda akan mendownload ${itemList.length} item. Contoh:\n\n${preview}${itemList.length > 10 ? '\n...' : ''}\n\nLanjutkan?`);
         if (!ok) return;
       }
+      // Mode eksekusi
+      const modeEksekusi = document.getElementById(`mode-eksekusi-${tabName}`)?.value || 'batch';
+      const batchSize = parseInt(document.getElementById(`batch-size-${tabName}`)?.value || '20', 10);
+
       // Reset progress lama dan pindah ke tab Download
       resetDownloadProgress(() => {
         switchToDownloadTab();
 
         // Inisialisasi progress awal per URL dengan 0% dan file pertama
-        initializeDownloadProgress(queue);
+        initializeDownloadProgress(queue).then(keys => {
+          // mapping id -> nama kab
+          const cityNameMap = {};
+          cities.forEach(city => { cityNameMap[city.id] = city.name; });
 
+          // ambil kab terpilih (kalau 1 saja)
+          const checked = document.querySelectorAll(`#cities-${tabName} input[type="checkbox"]:checked`);
+          const selectedCityIds = Array.from(checked).map(cb => cb.value);
 
-        // mapping id -> nama kab
-        const cityNameMap = {};
-        cities.forEach(city => { cityNameMap[city.id] = city.name; });
+          let kab = '';
+          if (selectedCityIds.length === 1) {
+            kab = cityNameMap[selectedCityIds[0]];
+            // Remove code prefix
+            kab = kab.replace(/^\d+\s*-\s*/, '').trim();
+          } else if (selectedCityIds.length > 1) {
+            // Gabungkan semua nama kabupaten, tanpa kode
+            kab = selectedCityIds.map(id => cityNameMap[id].replace(/^\d+\s*-\s*/, '').trim()).join(', ');
+          } else {
+            kab = 'PROVINSI';
+          }
 
-        // ambil kab terpilih (kalau 1 saja)
-        const checked = document.querySelectorAll(`#cities-${tabName} input[type="checkbox"]:checked`);
-        const selectedCityIds = Array.from(checked).map(cb => cb.value);
+          const kabCode = selectedCityIds.length === 1 ? selectedCityIds[0] : '';
+          const kecValue = document.getElementById(`kecamatan-${tabName}`).value;
+          const kecCode = extractNumericCode(kecValue);
+          const desaValue = data.desa || '';
+          const desaCode = extractNumericCode(desaValue);
 
+          const defaultSasaran = data.sasaran || (queue[0] && queue[0].sasaran) || detectSasaranFromUrl((queue[0] && queue[0].url) || '') || '';
 
-        let kab = '';
-        if (selectedCityIds.length === 1) {
-          kab = cityNameMap[selectedCityIds[0]];
-          // Remove code prefix
-          kab = kab.replace(/^\d+\s*-\s*/, '').trim();
-        } else if (selectedCityIds.length > 1) {
-          // Gabungkan semua nama kabupaten, tanpa kode
-          kab = selectedCityIds.map(id => cityNameMap[id].replace(/^\d+\s*-\s*/, '').trim()).join(', ');
-        } else {
-          kab = 'PROVINSI';
-        }
+          const payload = {
+            menu: activeMenuId,
+            submenu: activeSubmenuId,
+            periode: document.getElementById(`periode-${tabName}`).value,
+            kab: kab,
+            kabCode: kabCode,
+            kec: kecValue,
+            kecCode,
+            jenisLaporan,
+            desa: data.desa,
+            desaCode,
+            sasaran: defaultSasaran
+          };
 
-        const kabCode = selectedCityIds.length === 1 ? selectedCityIds[0] : '';
-        const kecValue = document.getElementById(`kecamatan-${tabName}`).value;
-        const kecCode = extractNumericCode(kecValue);
-        const desaValue = data.desa || '';
-        const desaCode = extractNumericCode(desaValue);
+          data.sasaran = defaultSasaran;
 
-        const defaultSasaran = data.sasaran || (queue[0] && queue[0].sasaran) || detectSasaranFromUrl((queue[0] && queue[0].url) || '') || '';
+          if (tabName === "bulanan") {
+            payload.tahun = document.getElementById("tahun")?.value; // ambil input tahun bulanan
+            payload.faskes = data.faskes;
+          } else {
+            payload.desa = data.desa;
+            payload.rw = data.rw;
+          }
 
-        const payload = {
-          menu: activeMenuId,
-          submenu: activeSubmenuId,
-          periode: document.getElementById(`periode-${tabName}`).value,
-          kab: kab,
-          kabCode: kabCode,
-          kec: kecValue,
-          kecCode,
-          jenisLaporan,
-          desa: data.desa,
-          desaCode,
-          sasaran: defaultSasaran
-        };
-
-        data.sasaran = defaultSasaran;
-
-        if (tabName === "bulanan") {
-          payload.tahun = document.getElementById("tahun")?.value; // ambil input tahun bulanan
-          payload.faskes = data.faskes;
-        } else {
-          payload.desa = data.desa;
-          payload.rw = data.rw;
-        }
-
-        chrome.runtime.sendMessage({ action: "setRenameContext", payload });
-
-        // Kirim pesan ke background untuk mulai proses
-        chrome.runtime.sendMessage({ action: 'processData', data },
-          (response) => {
-            if (response && response.success) {
-              console.log('Proses download dimulai...');
-            } else {
-              alert('Proses gagal atau tidak ada response.');
-            }
-          });
+          if (modeEksekusi === 'batch') {
+            console.log('[DEBUG][popup] Menggunakan mode Batch dengan ukuran:', batchSize, 'untuk tabel');
+            const fullBatchQueue = [];
+            queue.forEach((item, idx) => {
+              const dataSingle = { ...data, downloadQueue: [item], progressKey: keys[idx] };
+              dataSingle.downloadQueue[0].renameContext = payload;
+              fullBatchQueue.push(dataSingle);
+            });
+            
+            chrome.runtime.sendMessage({ 
+              action: 'startBatchDownload', 
+              batchQueue: fullBatchQueue, 
+              batchSize: batchSize 
+            }, (response) => {
+              if (response && response.success) {
+                console.log('Proses download batch dimulai...');
+              } else {
+                alert('Proses gagal atau tidak ada response.');
+              }
+            });
+          } else {
+            // Mode Paralel (Lama)
+            chrome.runtime.sendMessage({ action: "setRenameContext", payload });
+            chrome.runtime.sendMessage({ action: 'processData', data }, (response) => {
+              if (response && response.success) {
+                console.log('Proses download dimulai...');
+              } else {
+                alert('Proses gagal atau tidak ada response.');
+              }
+            });
+          }
+        }).catch(err => {
+          console.error('Gagal inisialisasi progress keys:', err);
+        });
       });
-
     } catch (error) {
       console.error('Error saat memproses form:', error);
       alert(`❌ Terjadi kesalahan: ${error.message}\n\nSilakan cek console untuk detail lebih lanjut.`);
@@ -2584,6 +2687,23 @@ function restoreUserPrefs() {
     }, 100);
   });
 }
+
+// Event listener untuk mode eksekusi Batch/Paralel
+['tahunan', 'bulanan'].forEach(tab => {
+  const modeSelect = document.getElementById(`mode-eksekusi-${tab}`);
+  const batchPanel = document.getElementById(`batch-size-panel-${tab}`);
+  if (modeSelect && batchPanel) {
+    modeSelect.addEventListener('change', (e) => {
+      if (e.target.value === 'batch') {
+        batchPanel.style.display = 'block';
+      } else {
+        batchPanel.style.display = 'none';
+      }
+    });
+    // Trigger on load
+    modeSelect.dispatchEvent(new Event('change'));
+  }
+});
 
 // On load: show menu screen
 showScreen(menuScreen);

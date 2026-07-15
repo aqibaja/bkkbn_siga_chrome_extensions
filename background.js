@@ -82,6 +82,105 @@ function dequeuePendingRename(callback) {
 let isWakingUp = false;
 let wakeUpQueue = [];
 
+// =========================
+// Batch Automation State
+// =========================
+let batchAutomationState = {
+    active: false,
+    queue: [],
+    batchSize: 20,
+    currentBatchTabs: {}, // tabId -> progressKey
+};
+
+function processNextBatch() {
+    if (!batchAutomationState.active) return;
+
+    if (batchAutomationState.queue.length === 0 && Object.keys(batchAutomationState.currentBatchTabs).length === 0) {
+        batchAutomationState.active = false;
+        console.log('[batch] All batches completed!');
+        return;
+    }
+
+    // Only start next batch if current batch is fully done (currentBatchTabs empty)
+    if (Object.keys(batchAutomationState.currentBatchTabs).length > 0) {
+        return; // wait for them to finish
+    }
+
+    const nextBatch = batchAutomationState.queue.splice(0, batchAutomationState.batchSize);
+    if (nextBatch.length === 0) return;
+
+    console.log(`[batch] Starting new batch of ${nextBatch.length} items`);
+    
+    nextBatch.forEach(data => {
+        const item = data.downloadQueue[0];
+        const url = item.url;
+        
+        chrome.tabs.create({ url, active: false }, (tabObj) => {
+            if (tabObj && tabObj.id) {
+                batchAutomationState.currentBatchTabs[tabObj.id] = data.progressKey;
+                chrome.storage.local.set({
+                    [`auto_${tabObj.id}`]: {
+                        downloadQueue: data.downloadQueue,
+                        currentIndex: 0,
+                        periode: data.periode, 
+                        selectedCities: data.selectedCities, 
+                        kecamatan: data.kecamatan, 
+                        jenisLaporan: data.jenisLaporan, 
+                        faskes: data.faskes, 
+                        tahun: data.tahun, 
+                        desa: data.desa, 
+                        rw: data.rw, 
+                        sasaran: data.sasaran,
+                        menu: data.menu || '',
+                        submenu: data.submenu || '',
+                        cancelled: false,
+                        progressKey: data.progressKey
+                    },
+                });
+            }
+        });
+    });
+}
+
+function checkBatchCompletion() {
+    if (!batchAutomationState.active) return;
+    
+    const remainingTabIds = Object.keys(batchAutomationState.currentBatchTabs);
+    const keysToCheck = remainingTabIds.map(id => batchAutomationState.currentBatchTabs[id]);
+    
+    if (keysToCheck.length === 0) {
+        console.log('[batch] All tabs in current batch closed. Proceeding to next.');
+        processNextBatch();
+        return;
+    }
+    
+    chrome.storage.local.get(keysToCheck, (res) => {
+        const allTerminal = keysToCheck.every(pk => {
+            const item = res[pk];
+            return item && (item.status === 'success' || item.status === 'fail' || item.status === 'cancelled');
+        });
+        
+        if (allTerminal) {
+            console.log('[batch] All active tabs in current batch have reached terminal state. Proceeding.');
+            batchAutomationState.currentBatchTabs = {};
+            processNextBatch();
+        }
+    });
+}
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName === 'local' && batchAutomationState.active) {
+        // If any of the changes involve our batch progress keys, check completion
+        const remainingTabIds = Object.keys(batchAutomationState.currentBatchTabs);
+        const activeKeys = remainingTabIds.map(id => batchAutomationState.currentBatchTabs[id]);
+        
+        const hasRelevantChange = Object.keys(changes).some(k => activeKeys.includes(k));
+        if (hasRelevantChange) {
+            checkBatchCompletion();
+        }
+    }
+});
+
 async function processWakeUpQueue() {
     if (isWakingUp || wakeUpQueue.length === 0) return;
     isWakingUp = true;
@@ -148,6 +247,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 });
             });
         });
+
+        sendResponse({ success: true });
+        return true;
+    }
+
+    // 2.5) Start Batch Automation (Chunking)
+    if (message.action === "startBatchDownload") {
+        const { batchQueue, batchSize } = message;
+        
+        batchAutomationState.active = true;
+        batchAutomationState.queue = batchQueue || [];
+        batchAutomationState.batchSize = batchSize || 20;
+        batchAutomationState.currentBatchTabs = {};
+
+        console.log(`[batch] Starting batch mode. Total: ${batchAutomationState.queue.length}, Batch Size: ${batchAutomationState.batchSize}`);
+        processNextBatch();
 
         sendResponse({ success: true });
         return true;
@@ -367,6 +482,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 // Cleanup auto data kalau tab automation ditutup
 chrome.tabs.onRemoved.addListener((tabId) => {
+    // Check if it's part of the current batch
+    if (batchAutomationState.active && batchAutomationState.currentBatchTabs[tabId]) {
+        delete batchAutomationState.currentBatchTabs[tabId];
+        checkBatchCompletion();
+    }
+
     const autoKey = `auto_${tabId}`;
     chrome.storage.local.get([autoKey], (res) => {
         if (res[autoKey]) {
