@@ -88,57 +88,68 @@ let wakeUpQueue = [];
 let batchAutomationState = {
     active: false,
     queue: [],
-    batchSize: 20,
+    batchSize: 10,
     currentBatchTabs: {}, // tabId -> progressKey
 };
 
 function processNextBatch() {
     if (!batchAutomationState.active) return;
 
-    if (batchAutomationState.queue.length === 0 && Object.keys(batchAutomationState.currentBatchTabs).length === 0) {
+    const currentActiveCount = Object.keys(batchAutomationState.currentBatchTabs).length;
+
+    if (batchAutomationState.queue.length === 0 && currentActiveCount === 0) {
         batchAutomationState.active = false;
         console.log('[batch] All batches completed!');
         return;
     }
 
-    // Only start next batch if current batch is fully done (currentBatchTabs empty)
-    if (Object.keys(batchAutomationState.currentBatchTabs).length > 0) {
+    const availableSlots = batchAutomationState.batchSize - currentActiveCount;
+    if (availableSlots <= 0) {
         return; // wait for them to finish
     }
 
-    const nextBatch = batchAutomationState.queue.splice(0, batchAutomationState.batchSize);
+    const nextBatch = batchAutomationState.queue.splice(0, availableSlots);
     if (nextBatch.length === 0) return;
 
-    console.log(`[batch] Starting new batch of ${nextBatch.length} items`);
+    console.log(`[batch] Starting new batch of ${nextBatch.length} items. Active: ${currentActiveCount}/${batchAutomationState.batchSize}`);
     
-    nextBatch.forEach(data => {
+    nextBatch.forEach((data, index) => {
         const item = data.downloadQueue[0];
         const url = item.url;
         
-        chrome.tabs.create({ url, active: false }, (tabObj) => {
-            if (tabObj && tabObj.id) {
-                batchAutomationState.currentBatchTabs[tabObj.id] = data.progressKey;
-                chrome.storage.local.set({
-                    [`auto_${tabObj.id}`]: {
-                        downloadQueue: data.downloadQueue,
-                        currentIndex: 0,
-                        periode: data.periode, 
-                        selectedCities: data.selectedCities, 
-                        kecamatan: data.kecamatan, 
-                        jenisLaporan: data.jenisLaporan, 
-                        faskes: data.faskes, 
-                        tahun: data.tahun, 
-                        desa: data.desa, 
-                        rw: data.rw, 
-                        sasaran: data.sasaran,
-                        menu: data.menu || '',
-                        submenu: data.submenu || '',
-                        cancelled: false,
-                        progressKey: data.progressKey
-                    },
-                });
-            }
-        });
+        const pendingId = `pending_${Date.now()}_${Math.random()}`;
+        batchAutomationState.currentBatchTabs[pendingId] = data.progressKey;
+        
+        setTimeout(() => {
+            chrome.tabs.create({ url, active: false }, (tabObj) => {
+                delete batchAutomationState.currentBatchTabs[pendingId];
+                if (tabObj && tabObj.id) {
+                    batchAutomationState.currentBatchTabs[tabObj.id] = data.progressKey;
+                    chrome.storage.local.set({
+                        [`auto_${tabObj.id}`]: {
+                            downloadQueue: data.downloadQueue,
+                            currentIndex: 0,
+                            periode: data.periode, 
+                            selectedCities: data.selectedCities, 
+                            kecamatan: data.kecamatan, 
+                            jenisLaporan: data.jenisLaporan, 
+                            faskes: data.faskes, 
+                            tahun: data.tahun, 
+                            desa: data.desa, 
+                            rw: data.rw, 
+                            sasaran: data.sasaran,
+                            menu: data.menu || '',
+                            submenu: data.submenu || '',
+                            cancelled: false,
+                            progressKey: data.progressKey,
+                            openDelay: data.openDelay
+                        },
+                    });
+                } else {
+                    checkBatchCompletion();
+                }
+            });
+        }, index * 1500);
     });
 }
 
@@ -146,25 +157,26 @@ function checkBatchCompletion() {
     if (!batchAutomationState.active) return;
     
     const remainingTabIds = Object.keys(batchAutomationState.currentBatchTabs);
-    const keysToCheck = remainingTabIds.map(id => batchAutomationState.currentBatchTabs[id]);
+    const realTabIds = remainingTabIds.filter(id => !id.startsWith('pending_'));
+    const keysToCheck = realTabIds.map(id => batchAutomationState.currentBatchTabs[id]);
     
     if (keysToCheck.length === 0) {
-        console.log('[batch] All tabs in current batch closed. Proceeding to next.');
         processNextBatch();
         return;
     }
     
     chrome.storage.local.get(keysToCheck, (res) => {
-        const allTerminal = keysToCheck.every(pk => {
+        let clearedSome = false;
+        realTabIds.forEach(tabId => {
+            const pk = batchAutomationState.currentBatchTabs[tabId];
             const item = res[pk];
-            return item && (item.status === 'success' || item.status === 'fail' || item.status === 'cancelled');
+            if (item && (item.status === 'success' || item.status === 'fail' || item.status === 'cancelled')) {
+                delete batchAutomationState.currentBatchTabs[tabId];
+                clearedSome = true;
+            }
         });
         
-        if (allTerminal) {
-            console.log('[batch] All active tabs in current batch have reached terminal state. Proceeding.');
-            batchAutomationState.currentBatchTabs = {};
-            processNextBatch();
-        }
+        processNextBatch();
     });
 }
 
@@ -229,23 +241,26 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             urlToQueueMap[item.url].push(item);
         });
 
-        Object.keys(urlToQueueMap).forEach((url) => {
-            chrome.tabs.create({ url, active: false }, (tabObj) => {
-                // If caller provided a progressKey for each item, preserve it into auto_<tabId>
-                const dataForThisUrl = message.data;
-                const progressKey = dataForThisUrl && dataForThisUrl.progressKey ? dataForThisUrl.progressKey : null;
-                chrome.storage.local.set({
-                    [`auto_${tabObj.id}`]: {
-                        downloadQueue: urlToQueueMap[url],
-                        currentIndex: 0,
-                        periode, selectedCities, kecamatan, jenisLaporan, faskes, tahun, desa, rw, sasaran,
-                        menu: message.data.menu || '',
-                        submenu: message.data.submenu || '',
-                        cancelled: false,
-                        progressKey
-                    },
+        Object.keys(urlToQueueMap).forEach((url, index) => {
+            setTimeout(() => {
+                chrome.tabs.create({ url, active: false }, (tabObj) => {
+                    // If caller provided a progressKey for each item, preserve it into auto_<tabId>
+                    const dataForThisUrl = message.data;
+                    const progressKey = dataForThisUrl && dataForThisUrl.progressKey ? dataForThisUrl.progressKey : null;
+                    chrome.storage.local.set({
+                        [`auto_${tabObj.id}`]: {
+                            downloadQueue: urlToQueueMap[url],
+                            currentIndex: 0,
+                            periode, selectedCities, kecamatan, jenisLaporan, faskes, tahun, desa, rw, sasaran,
+                            menu: message.data.menu || '',
+                            submenu: message.data.submenu || '',
+                            cancelled: false,
+                            progressKey,
+                            openDelay: message.data.openDelay
+                        },
+                    });
                 });
-            });
+            }, index * 1500);
         });
 
         sendResponse({ success: true });
@@ -377,6 +392,42 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true;
     }
 
+    // 7.5) Cancel Semua (dipakai popup.js)
+    if (message.action === "cancelAllDownloads") {
+        // Matikan batch automation jika aktif
+        batchAutomationState.active = false;
+        batchAutomationState.queue = [];
+        batchAutomationState.currentBatchTabs = {};
+
+        chrome.storage.local.get(null, (data) => {
+            const autoKeys = Object.keys(data).filter((k) => k.startsWith("auto_"));
+
+            // Hapus/batalkan tab automation
+            autoKeys.forEach((key) => {
+                const autoData = data[key];
+                chrome.storage.local.set({ [key]: { ...autoData, cancelled: true } });
+
+                const tabId = parseInt(key.replace("auto_", ""), 10);
+                if (tabId) chrome.tabs.remove(tabId).catch(() => {});
+            });
+            
+            // Set status semua progress UI jadi fail
+            const updates = {};
+            Object.keys(data).forEach(k => {
+                if (k.startsWith('tabdownload_') && data[k].status === 'progress') {
+                    updates[k] = { ...data[k], status: 'fail', fileAkhir: 'Dibatalkan oleh user' };
+                }
+            });
+            if (Object.keys(updates).length > 0) {
+                chrome.storage.local.set(updates);
+            }
+
+            sendResponse({ success: true });
+        });
+
+        return true;
+    }
+
     // 8) Content.js bertanya: apakah ada download SIGA yang selesai sejak `since` timestamp?
     if (message.action === 'checkSigaDownload') {
         const { since } = message;
@@ -440,12 +491,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                   lastUpdated: Date.now()
                 }
               }, () => {
-                // Lanjutkan rantai setelah data storage berhasil ditulis
-                createTabChained(index + 1);
+                // Lanjutkan rantai setelah data storage berhasil ditulis dengan jeda 1.5 detik
+                setTimeout(() => createTabChained(index + 1), 1500);
               });
             } else {
               // Jika terjadi error pada pembuatan tab, tetap lanjutkan antrean
-              createTabChained(index + 1);
+              setTimeout(() => createTabChained(index + 1), 1500);
             }
           });
         };

@@ -243,7 +243,21 @@
               </select>
               <div id="batch-size-panel-tahunan" style="margin-top: 8px;">
                 <label for="batch-size-tahunan">Jumlah tab per batch:</label>
-                <input type="number" id="batch-size-tahunan" min="1" max="100" value="20" style="width:80px;margin-left:8px;">
+                <input type="number" id="batch-size-tahunan" min="1" max="100" value="10" style="width:80px;margin-left:8px;">
+                <div class="text-muted" style="margin-top:4px;">Default: 10 tab per batch.</div>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <div class="checkbox-inline">
+                <input type="checkbox" id="enable-open-delay-tahunan" checked>
+                <label for="enable-open-delay-tahunan">Waktu tunggu awal saat tab dibuka</label>
+              </div>
+              <div id="open-delay-panel-tahunan" class="close-delay-panel" style="display:block;">
+                <label for="open-delay-tahunan">Durasi (detik):</label>
+                <input type="number" id="open-delay-tahunan" min="1" max="300" value="5"
+                  style="width:80px;margin-left:8px;">
+                <div class="text-muted" style="margin-top:4px;">Tunggu data website SIGA selesai termuat sebelum automation jalan. Default: 5 detik.</div>
               </div>
             </div>
 
@@ -351,7 +365,21 @@
               </select>
               <div id="batch-size-panel-bulanan" style="margin-top: 8px;">
                 <label for="batch-size-bulanan">Jumlah tab per batch:</label>
-                <input type="number" id="batch-size-bulanan" min="1" max="100" value="20" style="width:80px;margin-left:8px;">
+                <input type="number" id="batch-size-bulanan" min="1" max="100" value="10" style="width:80px;margin-left:8px;">
+                <div class="text-muted" style="margin-top:4px;">Default: 10 tab per batch.</div>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <div class="checkbox-inline">
+                <input type="checkbox" id="enable-open-delay-bulanan" checked>
+                <label for="enable-open-delay-bulanan">Waktu tunggu awal saat tab dibuka</label>
+              </div>
+              <div id="open-delay-panel-bulanan" class="close-delay-panel" style="display:block;">
+                <label for="open-delay-bulanan">Durasi (detik):</label>
+                <input type="number" id="open-delay-bulanan" min="1" max="300" value="5"
+                  style="width:80px;margin-left:8px;">
+                <div class="text-muted" style="margin-top:4px;">Tunggu data website SIGA selesai termuat sebelum automation jalan. Default: 5 detik.</div>
               </div>
             </div>
 
@@ -377,6 +405,7 @@
           <div class="download-action-bar">
             <button id="retry-all-btn" type="button" class="btn-retry-all">♻️ Retry Semua Gagal & Progress</button>
             <button id="clear-done-btn" type="button" class="btn-clear-done">🗑️ Bersihkan yang Selesai</button>
+            <button id="stop-all-btn" type="button" class="btn-stop-all" style="background-color: #d32f2f; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; margin-left: 5px; font-weight: bold;">🛑 Stop Semua Download</button>
           </div>
           <div id="download-progress-list"></div>
         </div>

@@ -896,6 +896,15 @@ function handleClearDone() {
   });
 }
 
+// Handler untuk stop semua download yang sedang berjalan
+function handleStopAllDownloads() {
+  if (!confirm('Apakah Anda yakin ingin membatalkan semua proses download yang sedang berjalan (termasuk antrean batch)?')) return;
+  chrome.runtime.sendMessage({ action: 'cancelAllDownloads' }, (resp) => {
+    alert('✅ Semua proses download telah dibatalkan.');
+    setTimeout(() => renderDownloadTab(), 500);
+  });
+}
+
 function resetDownloadProgress(callback) {
   chrome.storage.local.get(null, function (data) {
     let keysToDelete = [];
@@ -975,6 +984,7 @@ tabButtons.forEach(button => {
 // Tombol Retry Semua & Bersihkan Selesai di tab Download
 document.getElementById('retry-all-btn')?.addEventListener('click', handleRetryAll);
 document.getElementById('clear-done-btn')?.addEventListener('click', handleClearDone);
+document.getElementById('stop-all-btn')?.addEventListener('click', handleStopAllDownloads);
 
 setupSelectAll('select-all-tahunan', 'tahunan');
 setupSelectAll('select-all-bulanan', 'bulanan');
@@ -1524,6 +1534,15 @@ function setupFormSubmit(formId, tabName) {
         return;
       }
 
+      const openDelaySec = (() => {
+        const enableId = `enable-open-delay-${tabName}`;
+        const delayId = `open-delay-${tabName}`;
+        const enabled = document.getElementById(enableId)?.checked;
+        if (enabled === false) return 0;
+        const el = document.getElementById(delayId);
+        return el ? (parseInt(el.value, 10) || 5) : 5;
+      })();
+
       const periode = document.getElementById(`periode-${tabName}`).value;
 
       // Validasi: bulan wajib dipilih untuk tab bulanan
@@ -1683,7 +1702,7 @@ function setupFormSubmit(formId, tabName) {
       if ((selectedCities.length === 1 && (selectedKecamatan.length > 1 || hasDesaSelected)) || selectedCities.length > 1) {
         // Cek mode eksekusi
         const modeEksekusi = document.getElementById(`mode-eksekusi-${tabName}`)?.value || 'batch';
-        const batchSize = parseInt(document.getElementById(`batch-size-${tabName}`)?.value || '20', 10);
+        const batchSize = parseInt(document.getElementById(`batch-size-${tabName}`)?.value || '10', 10);
 
         if (modeEksekusi === 'batch') {
           console.log('[DEBUG][popup] Menggunakan mode Batch dengan ukuran:', batchSize);
@@ -1706,7 +1725,8 @@ function setupFormSubmit(formId, tabName) {
                   selectedCities,
                   downloadQueue: [item],
                   urls,
-                  progressKey: keys[idx]
+                  progressKey: keys[idx],
+                  openDelay: openDelaySec
                 };
 
                 let payload = {
@@ -1782,7 +1802,8 @@ function setupFormSubmit(formId, tabName) {
                 jenisLaporan,
                 selectedCities,
                 downloadQueue: singleQueue,
-                urls
+                urls,
+                openDelay: openDelaySec
               };
               let payload = {
                 menu: activeMenuId,
@@ -1839,7 +1860,8 @@ function setupFormSubmit(formId, tabName) {
         jenisLaporan,
         selectedCities,
         downloadQueue: queue,
-        urls
+        urls,
+        openDelay: openDelaySec
       };
       if (tabName === 'bulanan') {
         data.faskes = hasDesaSelected ? '' : document.getElementById('faskes-bulanan')?.value || '';
@@ -1862,7 +1884,7 @@ function setupFormSubmit(formId, tabName) {
       }
       // Mode eksekusi
       const modeEksekusi = document.getElementById(`mode-eksekusi-${tabName}`)?.value || 'batch';
-      const batchSize = parseInt(document.getElementById(`batch-size-${tabName}`)?.value || '20', 10);
+      const batchSize = parseInt(document.getElementById(`batch-size-${tabName}`)?.value || '10', 10);
 
       // Reset progress lama dan pindah ke tab Download
       resetDownloadProgress(() => {
@@ -2437,16 +2459,18 @@ document.getElementById('back-to-submenu').addEventListener('click', () => {
   });
 });
 
-// Toggle close-delay panel
+// Toggle close-delay & open-delay panels
 ['tahunan', 'bulanan'].forEach(tab => {
-  const toggle = document.getElementById(`enable-close-delay-${tab}`);
-  const panel = document.getElementById(`close-delay-panel-${tab}`);
-  if (toggle && panel) {
-    toggle.addEventListener('change', () => {
-      panel.style.display = toggle.checked ? 'block' : 'none';
-      saveUserPrefs();
-    });
-  }
+  ['close-delay', 'open-delay'].forEach(prefix => {
+    const toggle = document.getElementById(`enable-${prefix}-${tab}`);
+    const panel = document.getElementById(`${prefix}-panel-${tab}`);
+    if (toggle && panel) {
+      toggle.addEventListener('change', () => {
+        panel.style.display = toggle.checked ? 'block' : 'none';
+        saveUserPrefs();
+      });
+    }
+  });
 });
 
 // ──────────────────────────────────────────────────────────
@@ -2483,21 +2507,21 @@ function saveUserPrefs() {
       document.querySelectorAll(`#desa-checkboxes-${tab} input[type="checkbox"]:checked`)
     ).map(cb => cb.value);
     const fieldIds = tab === 'tahunan'
-      ? ['periode-tahunan', 'rw-tahunan', 'sasaran-tahunan', 'jenis-laporan-tahunan', 'close-delay-tahunan']
-      : ['tahun', 'jenis-laporan-bulanan', 'close-delay-bulanan'];
+      ? ['periode-tahunan', 'rw-tahunan', 'sasaran-tahunan', 'jenis-laporan-tahunan', 'close-delay-tahunan', 'open-delay-tahunan']
+      : ['tahun', 'jenis-laporan-bulanan', 'close-delay-bulanan', 'open-delay-bulanan'];
     fieldIds.forEach(id => {
       const el = document.getElementById(id);
       if (el) prefs[id] = el.value;
     });
     const cbOptionIds = tab === 'tahunan'
-      ? ['enable-close-delay-tahunan']
-      : ['enable-close-delay-bulanan'];
+      ? ['enable-close-delay-tahunan', 'enable-open-delay-tahunan']
+      : ['enable-close-delay-bulanan', 'enable-open-delay-bulanan'];
     cbOptionIds.forEach(id => {
       const el = document.getElementById(id);
       if (el) prefs[id] = el.checked;
     });
   });
-  // Simpan closeDelay sebagai key terpisah agar bisa dibaca content.js
+  // Simpan closeDelay & openDelay sebagai key terpisah agar bisa dibaca content.js
   const activeCloseDelay = (() => {
     const activeTab = prefs.activeTab || 'tahunan';
     const enableId = activeTab === 'bulanan' ? 'enable-close-delay-bulanan' : 'enable-close-delay-tahunan';
@@ -2507,7 +2531,16 @@ function saveUserPrefs() {
     const el = document.getElementById(delayId);
     return el ? parseInt(el.value, 10) || 10 : 10;
   })();
-  chrome.storage.local.set({ [PREFS_KEY]: prefs, closeDelay: activeCloseDelay });
+  const activeOpenDelay = (() => {
+    const activeTab = prefs.activeTab || 'tahunan';
+    const enableId = activeTab === 'bulanan' ? 'enable-open-delay-bulanan' : 'enable-open-delay-tahunan';
+    const delayId = activeTab === 'bulanan' ? 'open-delay-bulanan' : 'open-delay-tahunan';
+    const enabled = document.getElementById(enableId)?.checked;
+    if (enabled === false) return 0;
+    const el = document.getElementById(delayId);
+    return el ? parseInt(el.value, 10) || 5 : 5;
+  })();
+  chrome.storage.local.set({ [PREFS_KEY]: prefs, closeDelay: activeCloseDelay, openDelay: activeOpenDelay });
 }
 
 function restoreUserPrefs() {
@@ -2554,22 +2587,24 @@ function restoreUserPrefs() {
     // Restore simple fields & checkboxes untuk kedua tab
     ['tahunan', 'bulanan'].forEach(tab => {
       const fieldIds = tab === 'tahunan'
-        ? ['periode-tahunan', 'rw-tahunan', 'sasaran-tahunan', 'jenis-laporan-tahunan', 'close-delay-tahunan']
-        : ['tahun', 'jenis-laporan-bulanan', 'close-delay-bulanan'];
+        ? ['periode-tahunan', 'rw-tahunan', 'sasaran-tahunan', 'jenis-laporan-tahunan', 'close-delay-tahunan', 'open-delay-tahunan']
+        : ['tahun', 'jenis-laporan-bulanan', 'close-delay-bulanan', 'open-delay-bulanan'];
       fieldIds.forEach(id => {
         const el = document.getElementById(id);
         if (el && prefs[id] !== undefined) el.value = prefs[id];
       });
       const cbOptionIds = tab === 'tahunan'
-        ? ['enable-close-delay-tahunan']
-        : ['enable-close-delay-bulanan'];
+        ? ['enable-close-delay-tahunan', 'enable-open-delay-tahunan']
+        : ['enable-close-delay-bulanan', 'enable-open-delay-bulanan'];
       cbOptionIds.forEach(id => {
         const el = document.getElementById(id);
         if (el && prefs[id] !== undefined) {
           el.checked = prefs[id];
-          if (id.startsWith('enable-close-delay-')) {
-            const t = id.replace('enable-close-delay-', '');
-            const panel = document.getElementById(`close-delay-panel-${t}`);
+          if (id.startsWith('enable-close-delay-') || id.startsWith('enable-open-delay-')) {
+            const isClose = id.startsWith('enable-close-delay-');
+            const prefix = isClose ? 'close-delay' : 'open-delay';
+            const t = id.replace(`enable-${prefix}-`, '');
+            const panel = document.getElementById(`${prefix}-panel-${t}`);
             if (panel) panel.style.display = prefs[id] ? 'block' : 'none';
           }
         }
