@@ -172,30 +172,119 @@ function renderCheckboxes(containerId, tabName) {
 
   // Tambahkan handler disable saat render awal
   setTimeout(() => handleDisableInputs(tabName), 0);
-  // Fungsi untuk men-disable input selain jenis laporan jika lebih dari 1 kab/kota dipilih
-  function handleDisableInputs(tabName) {
-    const checked = document.querySelectorAll(`#cities-${tabName} input[type="checkbox"]:checked`);
-    const disable = checked.length > 1;
-    // Sembunyikan group kecamatan jika lebih dari 1 kab dipilih
-    const kecGroup = document.getElementById(`kecamatan-group-${tabName}`);
-    if (kecGroup) kecGroup.style.display = disable ? 'none' : '';
-    // Sembunyikan desa selector jika lebih dari 1 kab dipilih
-    const desaSelector = document.getElementById(`desa-selector-${tabName}`);
-    if (desaSelector) desaSelector.style.display = disable ? 'none' : '';
-    // Disable RW dan Sasaran
-    const idsToDisable = tabName === 'tahunan'
-      ? ['rw-tahunan', 'sasaran-tahunan']
-      : ['tahun'];
-    idsToDisable.forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.disabled = disable;
-    });
-    // Jenis laporan tetap enabled
-    const jenisLaporanId = tabName === 'tahunan' ? 'jenis-laporan-tahunan' : 'jenis-laporan-bulanan';
-    const jenisLaporanEl = document.getElementById(jenisLaporanId);
-    if (jenisLaporanEl) jenisLaporanEl.disabled = false;
-  }
 }
+
+// Fungsi untuk men-disable input selain jenis laporan jika lebih dari 1 kab/kota dipilih
+function handleDisableInputs(tabName) {
+  const checked = document.querySelectorAll(`#cities-${tabName} input[type="checkbox"]:checked`);
+  const disable = checked.length > 1;
+  const isDownloadAllDesa = document.getElementById(`download-all-desa-${tabName}`)?.checked;
+  const isDownloadAllKec = document.getElementById(`download-all-kec-${tabName}`)?.checked;
+  const hideKecDesa = disable || isDownloadAllDesa || isDownloadAllKec;
+  
+  // Sembunyikan group kecamatan jika lebih dari 1 kab dipilih atau opsi semua dicentang
+  const kecGroup = document.getElementById(`kecamatan-group-${tabName}`);
+  if (kecGroup) kecGroup.style.display = hideKecDesa ? 'none' : '';
+  // Sembunyikan desa selector jika lebih dari 1 kab dipilih atau opsi semua dicentang
+  const desaSelector = document.getElementById(`desa-selector-${tabName}`);
+  if (desaSelector) desaSelector.style.display = hideKecDesa ? 'none' : '';
+  // Tampilkan opsi download semua desa jika minimal 1 kab dipilih
+  const downloadAllGroup = document.getElementById(`download-all-group-${tabName}`);
+  if (downloadAllGroup) downloadAllGroup.style.display = checked.length >= 1 ? 'flex' : 'none';
+  
+  updateDownloadAllDesaCount(tabName);
+  updateDownloadAllKecCount(tabName);
+  
+  // Disable RW dan Sasaran
+  const idsToDisable = tabName === 'tahunan'
+    ? ['rw-tahunan', 'sasaran-tahunan']
+    : ['tahun'];
+  idsToDisable.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = disable;
+  });
+  // Jenis laporan tetap enabled
+  const jenisLaporanId = tabName === 'tahunan' ? 'jenis-laporan-tahunan' : 'jenis-laporan-bulanan';
+  const jenisLaporanEl = document.getElementById(jenisLaporanId);
+  if (jenisLaporanEl) jenisLaporanEl.disabled = false;
+}
+
+function updateDownloadAllDesaCount(tabName) {
+  const countEl = document.getElementById(`download-all-desa-count-${tabName}`);
+  const checkbox = document.getElementById(`download-all-desa-${tabName}`);
+  const groupEl = document.getElementById(`download-all-group-${tabName}`);
+  if (!countEl || !checkbox || !groupEl) return;
+  
+  if (groupEl.style.display === 'none' || !checkbox.checked) {
+    countEl.style.display = 'none';
+    return;
+  }
+
+  const selectedCities = Array.from(document.querySelectorAll(`#cities-${tabName} input[type="checkbox"]:checked`)).map(cb => cb.value);
+  
+  let totalDesa = 0;
+  selectedCities.forEach(cityId => {
+    const kabNum = Number(cityId);
+    const allKecForCity = kecamatanData[cityId] || [];
+    allKecForCity.forEach(kec => {
+      const kecName = (kec.split(' - ')[1] || '').trim();
+      if (Array.isArray(wilayahData)) {
+        wilayahData.forEach(entry => {
+          const kodeKabObj = entry['KODE KABUPATEN'];
+          const kodeKab = kodeKabObj && typeof kodeKabObj === 'object' ? Object.values(kodeKabObj)[0] : kodeKabObj;
+          const namaKec = (entry['NAMA KECAMATAN'] || '').toString().trim();
+          if (Number(kodeKab) === kabNum && namaKec.toLowerCase() === kecName.toLowerCase()) {
+            totalDesa++;
+          }
+        });
+      }
+    });
+  });
+
+  countEl.textContent = `(Estimasi: ${totalDesa} desa/faskes akan didownload)`;
+  countEl.style.display = 'block';
+}
+
+function updateDownloadAllKecCount(tabName) {
+  const countEl = document.getElementById(`download-all-kec-count-${tabName}`);
+  const checkbox = document.getElementById(`download-all-kec-${tabName}`);
+  const groupEl = document.getElementById(`download-all-group-${tabName}`);
+  if (!countEl || !checkbox || !groupEl) return;
+  
+  if (groupEl.style.display === 'none' || !checkbox.checked) {
+    countEl.style.display = 'none';
+    return;
+  }
+
+  const selectedCities = Array.from(document.querySelectorAll(`#cities-${tabName} input[type="checkbox"]:checked`)).map(cb => cb.value);
+  
+  let totalKec = 0;
+  selectedCities.forEach(cityId => {
+    const allKecForCity = kecamatanData[cityId] || [];
+    totalKec += allKecForCity.length;
+  });
+
+  countEl.textContent = `(Estimasi: ${totalKec} kecamatan akan didownload)`;
+  countEl.style.display = 'block';
+}
+
+// Inisialisasi event listener untuk checkbox download-all-desa dan download-all-kec
+['tahunan', 'bulanan'].forEach(tabName => {
+  const cbDesa = document.getElementById(`download-all-desa-${tabName}`);
+  const cbKec = document.getElementById(`download-all-kec-${tabName}`);
+  
+  if (cbDesa && cbKec) {
+    cbDesa.addEventListener('change', () => {
+      if (cbDesa.checked) cbKec.checked = false; // Mutually exclusive
+      handleDisableInputs(tabName);
+    });
+    
+    cbKec.addEventListener('change', () => {
+      if (cbKec.checked) cbDesa.checked = false; // Mutually exclusive
+      handleDisableInputs(tabName);
+    });
+  }
+});
 
 // Tampilkan/sembunyikan group kecamatan berdasarkan kab/kota yang dipilih
 function updateKecamatanDropdown(tabName) {
@@ -553,7 +642,11 @@ tabButtons.forEach(button => {
 function setupSelectAll(buttonId, tabName) {
   document.getElementById(buttonId).addEventListener('click', () => {
     const checkboxes = document.querySelectorAll(`#cities-${tabName} input[type="checkbox"]`);
-    checkboxes.forEach(checkbox => { checkbox.checked = true; });
+    checkboxes.forEach(checkbox => { 
+      checkbox.checked = true; 
+      // Trigger change event to update UI
+      checkbox.dispatchEvent(new Event('change'));
+    });
   });
 }
 
@@ -811,7 +904,28 @@ function handleRetryProgressItem(url) {
     }
 
     if (!found) {
-      alert('Tab untuk URL ini tidak ditemukan (mungkin sudah tertutup).\nSilakan Cancel lalu jalankan ulang proses download.');
+      // Cari dataSingle dari tabdownload_ untuk membuka tab baru jika tab sudah ditutup
+      const urlHash = safeUrlHash(url);
+      const tabKey = Object.keys(data).find(k => k.startsWith(`tabdownload_${urlHash}`));
+      
+      if (tabKey && data[tabKey] && data[tabKey].dataSingle) {
+        chrome.runtime.sendMessage({ action: 'processData', data: data[tabKey].dataSingle });
+        chrome.storage.local.set({ [tabKey]: { ...data[tabKey], status: 'progress', fileAkhir: 'Retry (Tab Baru)...' } });
+        alert('🔄 Membuka tab baru untuk melanjutkan proses yang tertutup.');
+        setTimeout(() => renderDownloadTab(), 500);
+      } else {
+        alert('Tab untuk URL ini tidak ditemukan dan data state lama tidak lengkap.\nSilakan Cancel lalu jalankan ulang dari form awal.');
+      }
+    }
+  });
+}
+
+// Helper untuk menyimpan dataSingle ke tabdownload_ agar bisa di-retry meski tab sudah ditutup
+function saveRetryState(key, dataSingle) {
+  if (!key || !dataSingle) return;
+  chrome.storage.local.get([key], res => {
+    if (res[key]) {
+      chrome.storage.local.set({ [key]: { ...res[key], dataSingle } });
     }
   });
 }
@@ -819,24 +933,25 @@ function handleRetryProgressItem(url) {
 // Handler untuk retry semua item gagal dan/atau masih progress
 function handleRetryAll() {
   chrome.storage.local.get(null, function (data) {
-    // Hanya retry item yang GAGAL (fail), bukan yang masih berjalan (progress)
+    // Retry item yang GAGAL (fail) atau yang masih BERJALAN (progress) karena mungkin stuck
     const failedKeys = new Set(
       Object.keys(data)
-        .filter(k => k.startsWith('tabdownload_') && data[k].status === 'fail')
+        .filter(k => k.startsWith('tabdownload_') && (data[k].status === 'fail' || data[k].status === 'progress'))
     );
 
     if (failedKeys.size === 0) {
-      alert('Tidak ada item yang gagal (error) untuk di-retry.\nItem yang masih berjalan (progress) tidak di-restart.');
+      alert('Tidak ada item yang gagal (error) atau stuck untuk di-retry.');
       return;
     }
 
-    if (!confirm(`Retry ${failedKeys.size} item yang GAGAL?\n\nHanya item dengan status error yang akan di-restart.`)) return;
+    if (!confirm(`Retry ${failedKeys.size} item yang GAGAL atau masih PROGRESS?\n\nSemua item dengan status error atau masih berjalan akan di-restart.`)) return;
 
-    const autoKeys = Object.keys(data).filter(k => k.startsWith('auto_'));
     let retryCount = 0;
+    const handledFailedKeys = new Set();
+    const batchQueue = [];
 
-    // Iterasi setiap auto_ key secara independen (bukan dikelompokkan per URL)
-    // Ini memperbaiki mode paralel: setiap tab punya auto_ sendiri
+    // 1. Retry yang masih ada auto_ state (tab masih aktif)
+    const autoKeys = Object.keys(data).filter(k => k.startsWith('auto_'));
     autoKeys.forEach(autoKey => {
       const autoData = data[autoKey];
       if (!autoData || !autoData.downloadQueue || autoData.downloadQueue.length === 0) return;
@@ -853,31 +968,77 @@ function handleRetryAll() {
 
       if (!isFailedByProgressKey && !isFailedByHashSearch) return;
 
-      retryCount++;
-      const currentItem = queue[autoData.currentIndex || 0] || queue[0];
-      const url = currentItem?.url;
+      const pk = isFailedByProgressKey ? progressKey
+        : [...failedKeys].find(k => k.startsWith(`tabdownload_${safeUrlHash(queue[0]?.url || '')}`));
+        
+      if (pk) handledFailedKeys.add(pk);
 
-      // Reset auto_ state dan kirim retry (max retryCount = 5 untuk cegah infinite loop)
       const currentRetryCount = (autoData.retryCount || 0);
       if (currentRetryCount >= 5) {
         console.warn(`[retry] Lewati ${autoKey} — sudah di-retry ${currentRetryCount}x`);
         return;
       }
-      chrome.storage.local.set({ [autoKey]: { ...autoData, currentIndex: 0, retryCount: currentRetryCount + 1 } }, () => {
-        // Reset status progress ke 'progress'
-        const pk = isFailedByProgressKey ? progressKey
-          : [...failedKeys].find(k => k.startsWith(`tabdownload_${safeUrlHash(url || '')}`));
+
+      // Ambil dataSingle dari pk, atau reconstruct dari autoData
+      let dataSingle = pk && data[pk] ? data[pk].dataSingle : null;
+      if (!dataSingle) {
+        dataSingle = {
+          downloadQueue: queue,
+          periode: autoData.periode,
+          selectedCities: autoData.selectedCities,
+          kecamatan: autoData.kecamatan,
+          jenisLaporan: autoData.jenisLaporan,
+          faskes: autoData.faskes,
+          tahun: autoData.tahun,
+          desa: autoData.desa,
+          rw: autoData.rw,
+          sasaran: autoData.sasaran,
+          menu: autoData.menu,
+          submenu: autoData.submenu,
+          progressKey: pk,
+          openDelay: autoData.openDelay
+        };
+      }
+
+      if (dataSingle) {
+        batchQueue.push(dataSingle);
+        retryCount++;
         if (pk && data[pk]) {
-          chrome.storage.local.set({ [pk]: { ...data[pk], status: 'progress', fileAkhir: currentItem?.kota || 'Retry...' } });
+          chrome.storage.local.set({ [pk]: { ...data[pk], status: 'progress', fileAkhir: 'Retry (Batch)...' } });
         }
-        if (url) chrome.runtime.sendMessage({ action: 'retryFailedUrl', url, targetKey: autoKey });
-      });
+      }
+
+      // Hapus auto_ key and close tab so they don't become zombies
+      chrome.storage.local.remove(autoKey);
+      const tabId = parseInt(autoKey.replace('auto_', ''), 10);
+      if (tabId) chrome.tabs.remove(tabId).catch(() => {});
     });
 
-    if (retryCount > 0) {
-      alert(`♻️ Retry dimulai untuk ${retryCount} item.`);
+    // 2. Retry yang tab-nya sudah ditutup (menggunakan dataSingle yang disimpan)
+    failedKeys.forEach(pk => {
+      if (!handledFailedKeys.has(pk)) {
+        const item = data[pk];
+        if (item && item.dataSingle) {
+          batchQueue.push(item.dataSingle);
+          retryCount++;
+          chrome.storage.local.set({ [pk]: { ...item, status: 'progress', fileAkhir: 'Retry (Batch)...' } });
+        }
+      }
+    });
+
+    if (batchQueue.length > 0) {
+      // Ambil batch size dari input di UI jika ada, atau default ke 5
+      const batchSizeInput = document.getElementById('batch-size');
+      const batchSize = batchSizeInput ? parseInt(batchSizeInput.value, 10) || 5 : 5;
+      
+      chrome.runtime.sendMessage({ 
+        action: 'startBatchDownload', 
+        batchQueue: batchQueue, 
+        batchSize: batchSize 
+      });
+      alert(`♻️ Retry batch dimulai untuk ${batchQueue.length} item.`);
     } else {
-      alert('Tidak ada auto state aktif yang ditemukan.\nKemungkinan tab sudah ditutup. Jalankan ulang dari form.');
+      alert('Tidak ada item yang dapat di-retry (kemungkinan tab sudah tertutup dan ini adalah sesi lama).');
     }
     setTimeout(() => renderDownloadTab(), 500);
   });
@@ -902,6 +1063,22 @@ function handleStopAllDownloads() {
   chrome.runtime.sendMessage({ action: 'cancelAllDownloads' }, (resp) => {
     alert('✅ Semua proses download telah dibatalkan.');
     setTimeout(() => renderDownloadTab(), 500);
+  });
+}
+
+// Handler untuk reload semua tab SIGA yang terbuka
+function handleReloadSigaTabs() {
+  chrome.tabs.query({ url: "*://newsiga-siga.bkkbn.go.id/*" }, (tabs) => {
+    if (!tabs || tabs.length === 0) {
+      alert('Tidak ada tab SIGA yang sedang terbuka.');
+      return;
+    }
+    if (confirm(`Apakah Anda yakin ingin me-reload ${tabs.length} tab SIGA?`)) {
+      tabs.forEach(tab => {
+        chrome.tabs.reload(tab.id);
+      });
+      alert(`✅ ${tabs.length} tab SIGA berhasil di-reload.`);
+    }
   });
 }
 
@@ -985,6 +1162,7 @@ tabButtons.forEach(button => {
 document.getElementById('retry-all-btn')?.addEventListener('click', handleRetryAll);
 document.getElementById('clear-done-btn')?.addEventListener('click', handleClearDone);
 document.getElementById('stop-all-btn')?.addEventListener('click', handleStopAllDownloads);
+document.getElementById('reload-siga-tabs-btn')?.addEventListener('click', handleReloadSigaTabs);
 
 setupSelectAll('select-all-tahunan', 'tahunan');
 setupSelectAll('select-all-bulanan', 'bulanan');
@@ -1000,7 +1178,10 @@ updateUrlCount('bulanan');
 function setupReset(buttonId, tabName) {
   document.getElementById(buttonId).addEventListener('click', () => {
     const checkboxes = document.querySelectorAll(`#cities-${tabName} input[type="checkbox"]`);
-    checkboxes.forEach(checkbox => { checkbox.checked = false; });
+    checkboxes.forEach(checkbox => { 
+      checkbox.checked = false; 
+      checkbox.dispatchEvent(new Event('change'));
+    });
   });
 }
 setupReset('reset-tahunan', 'tahunan');
@@ -1574,9 +1755,50 @@ function setupFormSubmit(formId, tabName) {
       const selectedKecamatan = getSelectedKecamatan(tabName);
       let selectedDesaFaskes = getSelectedDesaFaskes(tabName);
       let hasDesaSelected = selectedDesaFaskes.length > 0;
+      
+      const isDownloadAllDesa = document.getElementById(`download-all-desa-${tabName}`)?.checked;
+      const isDownloadAllKecamatan = document.getElementById(`download-all-kec-${tabName}`)?.checked;
 
-      // Jika user pilih banyak kab/kota, setiap kab/kota dibuka di tab terpisah (mirip banyak url)
-      if (selectedCities.length > 1) {
+      if (isDownloadAllKecamatan && selectedCities.length >= 1) {
+        selectedCities.forEach(cityId => {
+          const allKecForCity = kecamatanData[cityId] || [];
+          allKecForCity.forEach(kec => {
+            urls.forEach(url => {
+              queue.push({ kota: cityNameMap[cityId], url, kecamatan: kec, kabCode: cityId });
+            });
+          });
+        });
+      } else if (isDownloadAllDesa && selectedCities.length >= 1) {
+        selectedCities.forEach(cityId => {
+          const kabNum = Number(cityId);
+          const allKecForCity = kecamatanData[cityId] || [];
+          allKecForCity.forEach(kec => {
+            const kecName = (kec.split(' - ')[1] || '').trim();
+            const desaForKec = [];
+            if (Array.isArray(wilayahData)) {
+              wilayahData.forEach(entry => {
+                const kodeKabObj = entry['KODE KABUPATEN'];
+                const kodeKab = kodeKabObj && typeof kodeKabObj === 'object' ? Object.values(kodeKabObj)[0] : kodeKabObj;
+                const namaKec = (entry['NAMA KECAMATAN'] || '').toString().trim();
+                if (Number(kodeKab) === kabNum && namaKec.toLowerCase() === kecName.toLowerCase()) {
+                  desaForKec.push(`${entry['KODE DESA']} - ${entry['NAMA DESA']}`);
+                }
+              });
+            }
+            if (desaForKec.length > 0) {
+              urls.forEach(url => {
+                desaForKec.forEach(desaStr => {
+                  if (tabName === 'tahunan') {
+                    queue.push({ kota: cityNameMap[cityId], url, kecamatan: kec, desa: desaStr, kabCode: cityId });
+                  } else {
+                    queue.push({ kota: cityNameMap[cityId], url, kecamatan: kec, faskes: desaStr, kabCode: cityId });
+                  }
+                });
+              });
+            }
+          });
+        });
+      } else if (selectedCities.length > 1) {
         // Banyak kab/kota: setiap kab/kota x url = tab terpisah
         selectedCities.forEach(cityId => {
           urls.forEach(url => {
@@ -1672,12 +1894,14 @@ function setupFormSubmit(formId, tabName) {
           submenu: activeSubmenuId,
           periode,
           kab: (item.kota || '').toString().replace(/^\d+\s*-\s*/, '').trim(),
+          kotaAsli: item.kota || '',
           kabCode: itemKabCode,
           kec: itemKecamatan,
           kecCode,
           jenisLaporan,
           desaCode,
-          sasaran: sasaran
+          sasaran: sasaran,
+          isBatchKabupaten: queue.length > 1
         };
         
         if (tabName === 'bulanan') {
@@ -1699,7 +1923,7 @@ function setupFormSubmit(formId, tabName) {
       // DEBUG LOG: tampilkan queue sebelum dikirim ke background
       console.log('[DEBUG][popup] Queue to background:', queue);
 
-      if ((selectedCities.length === 1 && (selectedKecamatan.length > 1 || hasDesaSelected)) || selectedCities.length > 1) {
+      if ((selectedCities.length === 1 && (selectedKecamatan.length > 1 || hasDesaSelected || isDownloadAllKecamatan || isDownloadAllDesa)) || selectedCities.length > 1) {
         // Cek mode eksekusi
         const modeEksekusi = document.getElementById(`mode-eksekusi-${tabName}`)?.value || 'batch';
         const batchSize = parseInt(document.getElementById(`batch-size-${tabName}`)?.value || '10', 10);
@@ -1734,12 +1958,14 @@ function setupFormSubmit(formId, tabName) {
                   submenu: activeSubmenuId,
                   periode,
                   kab: (item.kota || '').toString().replace(/^\d+\s*-\s*/, '').trim(),
+                  kotaAsli: item.kota || '',
                   kabCode: itemKabCode,
                   kec: itemKecamatan,
                   kecCode,
                   jenisLaporan,
                   desaCode,
-                  sasaran: item.sasaran || detectSasaranFromUrl(item.url)
+                  sasaran: item.sasaran || detectSasaranFromUrl(item.url),
+                  isBatchKabupaten: queue.length > 1
                 };
 
                 if (tabName === 'bulanan') {
@@ -1759,6 +1985,7 @@ function setupFormSubmit(formId, tabName) {
 
                 // Pass the renameContext directly inside the downloadQueue item
                 dataSingle.downloadQueue[0].renameContext = payload;
+                saveRetryState(keys[idx], dataSingle);
                 fullBatchQueue.push(dataSingle);
               });
               
@@ -1810,12 +2037,14 @@ function setupFormSubmit(formId, tabName) {
                 submenu: activeSubmenuId,
                 periode,
                 kab: (item.kota || '').toString().replace(/^\d+\s*-\s*/, '').trim(),
+                kotaAsli: item.kota || '',
                 kabCode: itemKabCode,
                 kec: itemKecamatan,
                 kecCode,
                 jenisLaporan,
                 desaCode,
-                sasaran: item.sasaran || detectSasaranFromUrl(item.url)
+                sasaran: item.sasaran || detectSasaranFromUrl(item.url),
+                isBatchKabupaten: queue.length > 1
               };
               if (tabName === 'bulanan') {
                 dataSingle.faskes = item.faskes || '';
@@ -1833,6 +2062,8 @@ function setupFormSubmit(formId, tabName) {
               }
               // attach the generated progress key so the content script can update the correct entry
               dataSingle.progressKey = keys[idx];
+              dataSingle.downloadQueue[0].renameContext = payload;
+              saveRetryState(keys[idx], dataSingle);
               chrome.runtime.sendMessage({ action: "setRenameContext", payload });
               chrome.runtime.sendMessage({ action: 'processData', data: dataSingle }, (response) => {
                 if (response && response.success) {
@@ -1950,6 +2181,7 @@ function setupFormSubmit(formId, tabName) {
             queue.forEach((item, idx) => {
               const dataSingle = { ...data, downloadQueue: [item], progressKey: keys[idx] };
               dataSingle.downloadQueue[0].renameContext = payload;
+              saveRetryState(keys[idx], dataSingle);
               fullBatchQueue.push(dataSingle);
             });
             
@@ -1966,6 +2198,11 @@ function setupFormSubmit(formId, tabName) {
             });
           } else {
             // Mode Paralel (Lama)
+            queue.forEach((item, idx) => {
+              const dataSingle = { ...data, downloadQueue: [item], progressKey: keys[idx] };
+              dataSingle.downloadQueue[0].renameContext = payload;
+              saveRetryState(keys[idx], dataSingle);
+            });
             chrome.runtime.sendMessage({ action: "setRenameContext", payload });
             chrome.runtime.sendMessage({ action: 'processData', data }, (response) => {
               if (response && response.success) {
@@ -2514,8 +2751,8 @@ function saveUserPrefs() {
       if (el) prefs[id] = el.value;
     });
     const cbOptionIds = tab === 'tahunan'
-      ? ['enable-close-delay-tahunan', 'enable-open-delay-tahunan']
-      : ['enable-close-delay-bulanan', 'enable-open-delay-bulanan'];
+      ? ['enable-close-delay-tahunan', 'enable-open-delay-tahunan', 'download-all-kec-tahunan', 'download-all-desa-tahunan']
+      : ['enable-close-delay-bulanan', 'enable-open-delay-bulanan', 'download-all-kec-bulanan', 'download-all-desa-bulanan'];
     cbOptionIds.forEach(id => {
       const el = document.getElementById(id);
       if (el) prefs[id] = el.checked;
@@ -2594,8 +2831,8 @@ function restoreUserPrefs() {
         if (el && prefs[id] !== undefined) el.value = prefs[id];
       });
       const cbOptionIds = tab === 'tahunan'
-        ? ['enable-close-delay-tahunan', 'enable-open-delay-tahunan']
-        : ['enable-close-delay-bulanan', 'enable-open-delay-bulanan'];
+        ? ['enable-close-delay-tahunan', 'enable-open-delay-tahunan', 'download-all-kec-tahunan', 'download-all-desa-tahunan']
+        : ['enable-close-delay-bulanan', 'enable-open-delay-bulanan', 'download-all-kec-bulanan', 'download-all-desa-bulanan'];
       cbOptionIds.forEach(id => {
         const el = document.getElementById(id);
         if (el && prefs[id] !== undefined) {
@@ -2616,6 +2853,7 @@ function restoreUserPrefs() {
           if (cb) cb.checked = true;
         });
         updateKecamatanDropdown(tab);
+        handleDisableInputs(tab);
       }
     });
 

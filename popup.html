@@ -197,6 +197,22 @@
               </div>
               <div id="cities-tahunan" class="checkbox-grid"></div>
             </div>
+            <div id="download-all-group-tahunan" style="display:none; margin-top: 8px; flex-direction: column; align-items: flex-start; gap: 8px; padding: 10px; background: #f0f7ff; border: 1px solid #cce3ff; border-radius: 6px;">
+              <div style="width: 100%;">
+                <div style="display: flex; align-items: center; gap: 8px; text-align: left;">
+                  <input type="checkbox" id="download-all-kec-tahunan" style="cursor:pointer; width:16px; height:16px; margin:0;">
+                  <label for="download-all-kec-tahunan" style="font-weight:bold; color:#0c4a6e; cursor:pointer; margin:0; text-transform:none; font-size:13px; line-height: 1.2;">⬇️ Download Semua Kecamatan (Tanpa Desa)</label>
+                </div>
+                <div id="download-all-kec-count-tahunan" style="margin-left: 24px; font-size: 12px; font-weight: bold; color: #dc2626; display: none; text-align: left; margin-top:4px;"></div>
+              </div>
+              <div style="width: 100%;">
+                <div style="display: flex; align-items: center; gap: 8px; text-align: left;">
+                  <input type="checkbox" id="download-all-desa-tahunan" style="cursor:pointer; width:16px; height:16px; margin:0;">
+                  <label for="download-all-desa-tahunan" style="font-weight:bold; color:#0c4a6e; cursor:pointer; margin:0; text-transform:none; font-size:13px; line-height: 1.2;">⬇️ Download Semua Desa</label>
+                </div>
+                <div id="download-all-desa-count-tahunan" style="margin-left: 24px; font-size: 12px; font-weight: bold; color: #dc2626; display: none; text-align: left; margin-top:4px;"></div>
+              </div>
+            </div>
             <div class="form-group" id="kecamatan-group-tahunan" style="display:none;">
               <label>Pilih Kecamatan (bisa lebih dari satu):</label>
               <!-- Hidden input for JS value compatibility -->
@@ -327,6 +343,22 @@
               </div>
               <div id="cities-bulanan" class="checkbox-grid"></div>
             </div>
+            <div id="download-all-group-bulanan" style="display:none; margin-top: 8px; flex-direction: column; align-items: flex-start; gap: 8px; padding: 10px; background: #f0f7ff; border: 1px solid #cce3ff; border-radius: 6px;">
+              <div style="width: 100%;">
+                <div style="display: flex; align-items: center; gap: 8px; text-align: left;">
+                  <input type="checkbox" id="download-all-kec-bulanan" style="cursor:pointer; width:16px; height:16px; margin:0;">
+                  <label for="download-all-kec-bulanan" style="font-weight:bold; color:#0c4a6e; cursor:pointer; margin:0; text-transform:none; font-size:13px; line-height: 1.2;">⬇️ Download Semua Kecamatan (Tanpa Desa/Faskes)</label>
+                </div>
+                <div id="download-all-kec-count-bulanan" style="margin-left: 24px; font-size: 12px; font-weight: bold; color: #dc2626; display: none; text-align: left; margin-top:4px;"></div>
+              </div>
+              <div style="width: 100%;">
+                <div style="display: flex; align-items: center; gap: 8px; text-align: left;">
+                  <input type="checkbox" id="download-all-desa-bulanan" style="cursor:pointer; width:16px; height:16px; margin:0;">
+                  <label for="download-all-desa-bulanan" style="font-weight:bold; color:#0c4a6e; cursor:pointer; margin:0; text-transform:none; font-size:13px; line-height: 1.2;">⬇️ Download Semua Desa/Faskes</label>
+                </div>
+                <div id="download-all-desa-count-bulanan" style="margin-left: 24px; font-size: 12px; font-weight: bold; color: #dc2626; display: none; text-align: left; margin-top:4px;"></div>
+              </div>
+            </div>
             <div class="form-group" id="kecamatan-group-bulanan" style="display:none;">
               <label>Pilih Kecamatan (bisa lebih dari satu):</label>
               <!-- Hidden input for JS value compatibility -->
@@ -402,10 +434,11 @@
         <!-- Tab Download Progress -->
         <div id="download-content" class="tab-content">
           <h2 class="section-title">📥 Download Progress</h2>
-          <div class="download-action-bar">
+          <div class="download-action-bar" style="display: flex; flex-wrap: wrap; gap: 5px;">
             <button id="retry-all-btn" type="button" class="btn-retry-all">♻️ Retry Semua Gagal & Progress</button>
             <button id="clear-done-btn" type="button" class="btn-clear-done">🗑️ Bersihkan yang Selesai</button>
-            <button id="stop-all-btn" type="button" class="btn-stop-all" style="background-color: #d32f2f; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; margin-left: 5px; font-weight: bold;">🛑 Stop Semua Download</button>
+            <button id="stop-all-btn" type="button" class="btn-stop-all" style="background-color: #d32f2f; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold;">🛑 Stop Semua</button>
+            <button id="reload-siga-tabs-btn" type="button" style="background-color: #3b82f6; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold;">🔄 Reload Semua Tab SIGA</button>
           </div>
           <div id="download-progress-list"></div>
         </div>

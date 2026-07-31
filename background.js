@@ -657,7 +657,15 @@ chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
         if (placePartClean) parts.push(placePartClean);
 
         const prefix = parts.join('-');
-        const newName = `${prefix ? prefix + '-' : ''}${sanitize(originalBase)}.${sanitize(originalExt)}`;
+        
+        let folderPath = '';
+        if (context.isBatchKabupaten && context.kotaAsli) {
+            // Ubah format '01 - ACEH SELATAN' menjadi '01 - Aceh Selatan'
+            let formattedKota = context.kotaAsli.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+            folderPath = sanitize(formattedKota) + '/';
+        }
+        
+        const newName = `${folderPath}${prefix ? prefix + '-' : ''}${sanitize(originalBase)}.${sanitize(originalExt)}`;
         console.log('[rename] buildFileName ->', { context, newName });
         suggest({ filename: newName, conflictAction: 'uniquify' });
     };
