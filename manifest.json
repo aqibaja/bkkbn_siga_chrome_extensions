@@ -25,7 +25,7 @@
   "content_scripts": [
     {
       "matches": [
-        "https://newsiga-siga.bkkbn.go.id/*"
+        "https://newsiga-siga.kemendukbangga.go.id/*"
       ],
       "js": [
         "content.js"
@@ -39,7 +39,7 @@
         "injected_blob_hook.js"
       ],
       "matches": [
-        "https://newsiga-siga.bkkbn.go.id/*"
+        "https://newsiga-siga.kemendukbangga.go.id/*"
       ]
     }
   ],

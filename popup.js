@@ -1068,7 +1068,7 @@ function handleStopAllDownloads() {
 
 // Handler untuk reload semua tab SIGA yang terbuka
 function handleReloadSigaTabs() {
-  chrome.tabs.query({ url: "*://newsiga-siga.bkkbn.go.id/*" }, (tabs) => {
+  chrome.tabs.query({ url: "*://newsiga-siga.kemendukbangga.go.id/*" }, (tabs) => {
     if (!tabs || tabs.length === 0) {
       alert('Tidak ada tab SIGA yang sedang terbuka.');
       return;
@@ -1541,7 +1541,7 @@ function setupBkbMonitoring() {
           lastUpdated: Date.now()
         }
       }, () => {
-        chrome.tabs.create({ url: `https://newsiga-siga.bkkbn.go.id/${targetRoute}`, active: true }, (tab) => {
+        chrome.tabs.create({ url: `https://newsiga-siga.kemendukbangga.go.id/${targetRoute}`, active: true }, (tab) => {
           if (!tab || !tab.id) {
             alert('Gagal membuka tab monitoring; coba lagi.');
             setBkbMonitoringStatus('Error membuka tab.');

@@ -7,7 +7,7 @@
 
 ## 1. Overview Aplikasi
 
-**SIGA Smart Downloader** adalah Chrome Extension (Manifest V3) yang mengotomasi proses download laporan Excel dari sistem SIGA (Sistem Informasi Keluarga) BKKBN — situs resmi: `https://newsiga-siga.bkkbn.go.id/`.
+**SIGA Smart Downloader** adalah Chrome Extension (Manifest V3) yang mengotomasi proses download laporan Excel dari sistem SIGA (Sistem Informasi Keluarga) BKKBN — situs resmi: `https://newsiga-siga.kemendukbangga.go.id/`.
 
 **Tujuan utama:**
 - Mengotomasi pemilihan dropdown filter (Periode, Tahun, Kab/Kota, Kecamatan, Desa/Faskes, RW, Sasaran) di halaman web SIGA.
@@ -47,7 +47,7 @@ siga_excel_downloader/
   "version": "1.0",
   "permissions": ["scripting", "tabs", "activeTab", "storage", "downloads"],
   "host_permissions": ["<all_urls>"],
-  "content_scripts": [{ "matches": ["https://newsiga-siga.bkkbn.go.id/*"], "js": ["content.js"] }],
+  "content_scripts": [{ "matches": ["https://newsiga-siga.kemendukbangga.go.id/*"], "js": ["content.js"] }],
   "background": { "service_worker": "background.js" },
   "web_accessible_resources": [{ "resources": ["injected_blob_hook.js"], "matches": ["..."] }]
 }
@@ -168,7 +168,7 @@ Monitoring K0 → (special panel, tanpa form Tahunan/Bulanan)
 | `registerBlobRename` | content.js | Daftarkan blob URL + payload rename |
 
 **Logika Rename File (`onDeterminingFilename`):**
-1. Filter: hanya proses download dari `newsiga-siga.bkkbn.go.id`
+1. Filter: hanya proses download dari `newsiga-siga.kemendukbangga.go.id`
 2. Cari blob-specific context dulu (`rename_for_<blobUrl>`) — polling 10x setiap 150ms
 3. Fallback: cek tab-specific context (`auto_<tabId>`)
 4. Fallback: cek `pendingRenameList` → `renameQueue` → `renameContext` global
@@ -197,7 +197,7 @@ Monitoring K0 → (special panel, tanpa form Tahunan/Bulanan)
 
 ### 5.3 `content.js` (1004 baris) — Automation Script
 
-**Di-inject ke semua halaman `https://newsiga-siga.bkkbn.go.id/*` setelah document_idle.**
+**Di-inject ke semua halaman `https://newsiga-siga.kemendukbangga.go.id/*` setelah document_idle.**
 
 **Alur eksekusi:**
 1. Cek `bkbMonitoring` state → jika aktif, jalankan `handleBkbMonitoringLoop()`
@@ -353,7 +353,7 @@ chrome.storage.local = {
 
 Fitur khusus untuk scraping data "Monitoring K0" dari portal SIGA secara berurutan per kabupaten:
 
-1. Popup buka tab baru ke `https://newsiga-siga.bkkbn.go.id/<targetRoute>`
+1. Popup buka tab baru ke `https://newsiga-siga.kemendukbangga.go.id/<targetRoute>`
 2. Set `bkbMonitoring.mode = 'active'` di storage
 3. `content.js` mendeteksi state ini → jalankan `handleBkbMonitoringLoop()`
 4. Loop: pilih Kab/Kota → klik "Cari" → wait → ekstrak data (Total, Update, Belum) → simpan ke results
@@ -409,7 +409,7 @@ Screen 3: Form
 - SIGA menggunakan React + react-select (`.css-yk16xz-control`, `.css-yt9ioa-option`, dll.) → rentan perubahan class name.
 - Blob hook (`injected_blob_hook.js`) punya fallback: DOM mutation observer + `window.postMessage`.
 - Semua operasi storage bersifat async; gunakan callback atau Promise.
-- `ALLOWED_HOST = "newsiga-siga.bkkbn.go.id"` — rename hanya untuk domain ini.
+- `ALLOWED_HOST = "newsiga-siga.kemendukbangga.go.id"` — rename hanya untuk domain ini.
 - `retryCount` direset ke 0 setiap pindah ke item berikutnya.
 - Tab automation dibersihkan di `chrome.tabs.onRemoved`.
 
@@ -426,7 +426,7 @@ Screen 3: Form
 - **Tidak ada npm package yang digunakan di runtime** (semua vanilla JS)
 - `node_modules/` ada tapi hanya untuk development tooling
 - Data wilayah: `KODE WILAYAH.json` (1.8 MB, lokal)
-- SIGA portal: `https://newsiga-siga.bkkbn.go.id/` (React SPA)
+- SIGA portal: `https://newsiga-siga.kemendukbangga.go.id/` (React SPA)
 
 ---
 

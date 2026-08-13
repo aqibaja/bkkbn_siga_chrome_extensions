@@ -1,6 +1,6 @@
 // background.js (MV3 service worker)
 
-const ALLOWED_HOST = "newsiga-siga.bkkbn.go.id";
+const ALLOWED_HOST = "newsiga-siga.kemendukbangga.go.id";
 
 function getHostSafe(url) {
     try {
@@ -397,6 +397,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // Matikan batch automation jika aktif
         batchAutomationState.active = false;
         batchAutomationState.queue = [];
+        const batchTabIdsToClose = Object.keys(batchAutomationState.currentBatchTabs).map(id => parseInt(id, 10));
         batchAutomationState.currentBatchTabs = {};
 
         chrome.storage.local.get(null, (data) => {
@@ -410,6 +411,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 const tabId = parseInt(key.replace("auto_", ""), 10);
                 if (tabId) chrome.tabs.remove(tabId).catch(() => {});
             });
+
+            // Tutup tab regular batch yang sedang aktif
+            batchTabIdsToClose.forEach((tabId) => {
+                if (tabId) chrome.tabs.remove(tabId).catch(() => {});
+            });
+
+            // Hapus antrean BKB Monitoring dan tutup tab-nya
+            const bkbKeys = Object.keys(data).filter(k => k.startsWith('bkbMonitoring'));
+            bkbKeys.forEach(k => {
+                if (k.startsWith('bkbMonitoringKec_')) {
+                    const tabId = parseInt(k.replace('bkbMonitoringKec_', ''), 10);
+                    if (tabId) chrome.tabs.remove(tabId).catch(() => {});
+                }
+            });
+            if (bkbKeys.length > 0) {
+                chrome.storage.local.remove(bkbKeys);
+            }
             
             // Set status semua progress UI jadi fail
             const updates = {};
@@ -472,7 +490,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           if (index >= initialTabsCount) return;
           
           const kab = plan[index];
-          const url = `https://newsiga-siga.bkkbn.go.id/${batchMeta.targetRoute}`;
+          const url = `https://newsiga-siga.kemendukbangga.go.id/${batchMeta.targetRoute}`;
           
           chrome.tabs.create({ url, active: false }, (tab) => {
             if (tab && tab.id) {
@@ -515,7 +533,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ ok: true });
         return true;
       }
-      const url = `https://newsiga-siga.bkkbn.go.id/${nextKecState.targetRoute || '#/kegiatan/kelompok_bkb'}`;
+      const url = `https://newsiga-siga.kemendukbangga.go.id/${nextKecState.targetRoute || '#/kegiatan/kelompok_bkb'}`;
       chrome.tabs.create({ url, active: true }, (newTab) => {
         if (!newTab || !newTab.id) { sendResponse({ ok: false }); return; }
         chrome.storage.local.set({ [nextStorageKey.replace('NEWTABID', newTab.id)]: { ...nextKecState, mode: 'active' } }, () => {
