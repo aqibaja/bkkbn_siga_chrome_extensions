@@ -161,7 +161,7 @@
         }
         return nodes[fallbackIndex];
       }
-      
+
       await wait(interval);
     }
     return null; // biarkan caller yang handle fail
@@ -426,8 +426,8 @@
   function dismissSweetAlertModal() {
     const swal = document.querySelector('.swal2-container, .swal2-popup, .swal-modal, .sweet-alert, .swal-overlay');
     if (swal) {
-      const okBtn = swal.querySelector('button.swal2-confirm, button.swal-button--confirm') 
-                    || [...swal.querySelectorAll('button')].find(btn => /ok|tutup|close|confirm/i.test(btn.textContent || ''));
+      const okBtn = swal.querySelector('button.swal2-confirm, button.swal-button--confirm')
+        || [...swal.querySelectorAll('button')].find(btn => /ok|tutup|close|confirm/i.test(btn.textContent || ''));
       if (okBtn) {
         okBtn.click();
         console.log('[BKB] SweetAlert Data Tidak Ditemukan ditutup otomatis.');
@@ -454,7 +454,7 @@
 
       // 2) Cek spinner loading
       const loading = document.querySelector('.ant-spin, .spinner, [role="progressbar"], .loading, .loader');
-      
+
       if (!loading) {
         // Cek baris tabel atau data angka
         const bodyText = document.body ? document.body.innerText : '';
@@ -466,7 +466,7 @@
       }
       await wait(250);
     }
-    
+
     // Jika timeout tapi tidak ada modal nodata, anggap success dan coba baca tabel
     return { success: true };
   }
@@ -658,7 +658,7 @@
     console.log(`[BKB-Batch] Dropdown count di halaman: ${allDropdowns.length}`);
     allDropdowns.forEach((d, i) => {
       const label = d.closest('.form-group, .ant-form-item, .row')?.querySelector('label');
-      console.log(`  [${i}] label="${label?.textContent?.trim()}" class="${d.className.slice(0,40)}"`);
+      console.log(`  [${i}] label="${label?.textContent?.trim()}" class="${d.className.slice(0, 40)}"`);
     });
 
     const cariButton = await waitForButtonByText('Cari', 10000);
@@ -876,9 +876,21 @@
 
   console.log('[content] started in tab', tab, 'url', window.location.href, 'hash', window.location.hash);
 
-  const storage = await new Promise((resolve) =>
+  let storage = await new Promise((resolve) =>
     chrome.storage.local.get([key], (res) => resolve(res[key]))
   );
+
+  if (!storage) {
+    const startPoll = Date.now();
+    while (Date.now() - startPoll < 5000) {
+      await wait(300);
+      storage = await new Promise((resolve) =>
+        chrome.storage.local.get([key], (res) => resolve(res[key]))
+      );
+      if (storage) break;
+    }
+  }
+
   const isAutoTab = !!storage;
 
   async function waitForMonitorState(timeout = 3000, interval = 200) {
@@ -900,7 +912,7 @@
   // Harus dicek sebelum bkbMonitoring agar state lama tidak mengganggu
   const kecBatchKey = `bkbMonitoringKec_${tab.id}`;
   let kecBatchState = null;
-  
+
   if (!isAutoTab) {
     // Debug: print semua keys di storage untuk mencari tahu mismatch
     const allStorage = await new Promise(r => chrome.storage.local.get(null, r));
@@ -919,34 +931,34 @@
       await wait(300);
     }
   }
-  
+
   if (!kecBatchState && !isAutoTab) {
     // FALLBACK: Cek global bkbMonitoringBatch jika key tab-specific tidak ketemu (e.g. karena tab ID mismatch)
-      const batchData = await new Promise(r =>
-        chrome.storage.local.get(['bkbMonitoringBatch'], res => r(res.bkbMonitoringBatch || null))
-      );
-      if (batchData && batchData.plan) {
-        const activeItem = batchData.plan.find(p => p.status === 'active') || batchData.plan[batchData.currentKabIndex];
-        if (activeItem && activeItem.status !== 'done') {
-          console.log(`[BKB-Batch-Fallback] Menggunakan data dari bkbMonitoringBatch untuk kab: ${activeItem.kabName}`);
-          kecBatchState = {
-            mode: 'active',
-            kabId: activeItem.kabId,
-            kabName: activeItem.kabName,
-            targetRoute: batchData.targetRoute,
-            initialWaitMs: batchData.initialWaitMs,
-            loopWaitMs: batchData.loopWaitMs,
-            currentIndex: activeItem.currentIndex || 0,
-            queue: activeItem.queue,
-            results: activeItem.results || [],
-            planIndex: activeItem.planIndex,
-            lastUpdated: Date.now()
-          };
-          // Tulis key tab-specific agar tersinkronisasi
-          await chrome.storage.local.set({ [kecBatchKey]: kecBatchState });
-        }
+    const batchData = await new Promise(r =>
+      chrome.storage.local.get(['bkbMonitoringBatch'], res => r(res.bkbMonitoringBatch || null))
+    );
+    if (batchData && batchData.plan) {
+      const activeItem = batchData.plan.find(p => p.status === 'active') || batchData.plan[batchData.currentKabIndex];
+      if (activeItem && activeItem.status !== 'done') {
+        console.log(`[BKB-Batch-Fallback] Menggunakan data dari bkbMonitoringBatch untuk kab: ${activeItem.kabName}`);
+        kecBatchState = {
+          mode: 'active',
+          kabId: activeItem.kabId,
+          kabName: activeItem.kabName,
+          targetRoute: batchData.targetRoute,
+          initialWaitMs: batchData.initialWaitMs,
+          loopWaitMs: batchData.loopWaitMs,
+          currentIndex: activeItem.currentIndex || 0,
+          queue: activeItem.queue,
+          results: activeItem.results || [],
+          planIndex: activeItem.planIndex,
+          lastUpdated: Date.now()
+        };
+        // Tulis key tab-specific agar tersinkronisasi
+        await chrome.storage.local.set({ [kecBatchKey]: kecBatchState });
       }
     }
+  }
 
 
   if (kecBatchState) {
@@ -976,7 +988,7 @@
           nextKecState: null,
           nextStorageKey: null,
           closeTabId: tab.id
-        }).catch(() => {});
+        }).catch(() => { });
       }
     } else {
       console.warn(`[content] Batch kec: URL target ${targetHash} belum tercapai. Menunggu navigasi.`);
@@ -1266,7 +1278,7 @@
           const kec = storage.kecamatan || '';
           const desa = (downloadQueue[currentIndex] && downloadQueue[currentIndex].desa) || storage.desa || '';
           const faskes = (downloadQueue[currentIndex] && downloadQueue[currentIndex].faskes) || storage.faskes || '';
-          
+
           payload = {
             periode: storage.periode,
             tahun: storage.tahun,
@@ -1383,7 +1395,7 @@
     if (jenisLaporan) {
       // Race the popup vs blob detection
       const popupPromise = handlePopup(jenisLaporan, url, kota, downloadQueue, currentIndex, state);
-      
+
       const raceResult = await Promise.race([
         popupPromise.then(() => 'popup_handled'),
         blobPromise.then((res) => res ? 'blob_detected' : 'blob_timeout')

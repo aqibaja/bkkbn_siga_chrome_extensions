@@ -8,6 +8,7 @@
     "tabs",
     "activeTab",
     "storage",
+    "unlimitedStorage",
     "downloads"
   ],
   "host_permissions": [
