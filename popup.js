@@ -1901,7 +1901,7 @@ function setupFormSubmit(formId, tabName) {
           jenisLaporan,
           desaCode,
           sasaran: sasaran,
-          isBatchKabupaten: queue.length > 1
+          isBatchKabupaten: queue.length > 1 && (document.getElementById(`create-folder-${tabName}`) ? document.getElementById(`create-folder-${tabName}`).checked : true)
         };
         
         if (tabName === 'bulanan') {
@@ -1965,7 +1965,7 @@ function setupFormSubmit(formId, tabName) {
                   jenisLaporan,
                   desaCode,
                   sasaran: item.sasaran || detectSasaranFromUrl(item.url),
-                  isBatchKabupaten: queue.length > 1
+                  isBatchKabupaten: queue.length > 1 && (document.getElementById(`create-folder-${tabName}`) ? document.getElementById(`create-folder-${tabName}`).checked : true)
                 };
 
                 if (tabName === 'bulanan') {
@@ -2044,7 +2044,7 @@ function setupFormSubmit(formId, tabName) {
                 jenisLaporan,
                 desaCode,
                 sasaran: item.sasaran || detectSasaranFromUrl(item.url),
-                isBatchKabupaten: queue.length > 1
+                isBatchKabupaten: queue.length > 1 && (document.getElementById(`create-folder-${tabName}`) ? document.getElementById(`create-folder-${tabName}`).checked : true)
               };
               if (tabName === 'bulanan') {
                 dataSingle.faskes = item.faskes || '';
@@ -2751,8 +2751,8 @@ function saveUserPrefs() {
       if (el) prefs[id] = el.value;
     });
     const cbOptionIds = tab === 'tahunan'
-      ? ['enable-close-delay-tahunan', 'enable-open-delay-tahunan', 'download-all-kec-tahunan', 'download-all-desa-tahunan']
-      : ['enable-close-delay-bulanan', 'enable-open-delay-bulanan', 'download-all-kec-bulanan', 'download-all-desa-bulanan'];
+      ? ['enable-close-delay-tahunan', 'enable-open-delay-tahunan', 'download-all-kec-tahunan', 'download-all-desa-tahunan', 'create-folder-tahunan']
+      : ['enable-close-delay-bulanan', 'enable-open-delay-bulanan', 'download-all-kec-bulanan', 'download-all-desa-bulanan', 'create-folder-bulanan'];
     cbOptionIds.forEach(id => {
       const el = document.getElementById(id);
       if (el) prefs[id] = el.checked;
@@ -2831,8 +2831,8 @@ function restoreUserPrefs() {
         if (el && prefs[id] !== undefined) el.value = prefs[id];
       });
       const cbOptionIds = tab === 'tahunan'
-        ? ['enable-close-delay-tahunan', 'enable-open-delay-tahunan', 'download-all-kec-tahunan', 'download-all-desa-tahunan']
-        : ['enable-close-delay-bulanan', 'enable-open-delay-bulanan', 'download-all-kec-bulanan', 'download-all-desa-bulanan'];
+        ? ['enable-close-delay-tahunan', 'enable-open-delay-tahunan', 'download-all-kec-tahunan', 'download-all-desa-tahunan', 'create-folder-tahunan']
+        : ['enable-close-delay-bulanan', 'enable-open-delay-bulanan', 'download-all-kec-bulanan', 'download-all-desa-bulanan', 'create-folder-bulanan'];
       cbOptionIds.forEach(id => {
         const el = document.getElementById(id);
         if (el && prefs[id] !== undefined) {
