@@ -205,9 +205,19 @@
             <div id="download-all-group-tahunan"
               style="display:none; margin-top: 8px; flex-direction: column; align-items: flex-start; gap: 8px; padding: 10px; background: #f0f7ff; border: 1px solid #cce3ff; border-radius: 6px;">
               <div style="width: 100%; border-bottom: 1px solid #cce3ff; padding-bottom: 8px; margin-bottom: 4px;">
-                <div style="display: flex; align-items: center; gap: 8px; text-align: left;">
-                  <input type="checkbox" id="create-folder-tahunan" style="cursor:pointer; width:16px; height:16px; margin:0;" checked>
-                  <label for="create-folder-tahunan" style="font-weight:bold; color:#0c4a6e; cursor:pointer; margin:0; text-transform:none; font-size:13px; line-height: 1.2;">📁 Buat Folder per Kab/Kota</label>
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                  <div style="display: flex; align-items: center; gap: 8px; text-align: left;">
+                    <input type="radio" name="folder-mode-tahunan" id="folder-mode-kab-tahunan" value="kab" style="cursor:pointer; width:16px; height:16px; margin:0;" checked>
+                    <label for="folder-mode-kab-tahunan" style="font-weight:bold; color:#0c4a6e; cursor:pointer; margin:0; text-transform:none; font-size:13px; line-height: 1.2;">📁 Buat Folder per Kab/Kota</label>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 8px; text-align: left;">
+                    <input type="radio" name="folder-mode-tahunan" id="folder-mode-tabel-tahunan" value="tabel" style="cursor:pointer; width:16px; height:16px; margin:0;">
+                    <label for="folder-mode-tabel-tahunan" style="font-weight:bold; color:#0c4a6e; cursor:pointer; margin:0; text-transform:none; font-size:13px; line-height: 1.2;">📁 Buat Folder per Tabel</label>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 8px; text-align: left;">
+                    <input type="radio" name="folder-mode-tahunan" id="folder-mode-none-tahunan" value="none" style="cursor:pointer; width:16px; height:16px; margin:0;">
+                    <label for="folder-mode-none-tahunan" style="font-weight:bold; color:#0c4a6e; cursor:pointer; margin:0; text-transform:none; font-size:13px; line-height: 1.2;">📁 Tanpa Folder</label>
+                  </div>
                 </div>
               </div>
               <div style="width: 100%;">
@@ -373,9 +383,19 @@
             <div id="download-all-group-bulanan"
               style="display:none; margin-top: 8px; flex-direction: column; align-items: flex-start; gap: 8px; padding: 10px; background: #f0f7ff; border: 1px solid #cce3ff; border-radius: 6px;">
               <div style="width: 100%; border-bottom: 1px solid #cce3ff; padding-bottom: 8px; margin-bottom: 4px;">
-                <div style="display: flex; align-items: center; gap: 8px; text-align: left;">
-                  <input type="checkbox" id="create-folder-bulanan" style="cursor:pointer; width:16px; height:16px; margin:0;" checked>
-                  <label for="create-folder-bulanan" style="font-weight:bold; color:#0c4a6e; cursor:pointer; margin:0; text-transform:none; font-size:13px; line-height: 1.2;">📁 Buat Folder per Kab/Kota</label>
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                  <div style="display: flex; align-items: center; gap: 8px; text-align: left;">
+                    <input type="radio" name="folder-mode-bulanan" id="folder-mode-kab-bulanan" value="kab" style="cursor:pointer; width:16px; height:16px; margin:0;" checked>
+                    <label for="folder-mode-kab-bulanan" style="font-weight:bold; color:#0c4a6e; cursor:pointer; margin:0; text-transform:none; font-size:13px; line-height: 1.2;">📁 Buat Folder per Kab/Kota</label>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 8px; text-align: left;">
+                    <input type="radio" name="folder-mode-bulanan" id="folder-mode-tabel-bulanan" value="tabel" style="cursor:pointer; width:16px; height:16px; margin:0;">
+                    <label for="folder-mode-tabel-bulanan" style="font-weight:bold; color:#0c4a6e; cursor:pointer; margin:0; text-transform:none; font-size:13px; line-height: 1.2;">📁 Buat Folder per Tabel</label>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 8px; text-align: left;">
+                    <input type="radio" name="folder-mode-bulanan" id="folder-mode-none-bulanan" value="none" style="cursor:pointer; width:16px; height:16px; margin:0;">
+                    <label for="folder-mode-none-bulanan" style="font-weight:bold; color:#0c4a6e; cursor:pointer; margin:0; text-transform:none; font-size:13px; line-height: 1.2;">📁 Tanpa Folder</label>
+                  </div>
                 </div>
               </div>
               <div style="width: 100%;">

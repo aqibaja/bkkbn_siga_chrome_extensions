@@ -677,7 +677,11 @@ chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
         const prefix = parts.join('-');
         
         let folderPath = '';
-        if (context.isBatchKabupaten && context.kotaAsli) {
+        if (context.folderMode === 'tabel' && context.tabelName) {
+            folderPath = sanitize(context.tabelName) + '/';
+        } else if (context.folderMode === 'none') {
+            folderPath = '';
+        } else if ((context.folderMode === 'kab' || !context.folderMode) && context.isBatchKabupaten && context.kotaAsli) {
             // Ubah format '01 - ACEH SELATAN' menjadi '01 - Aceh Selatan'
             let formattedKota = context.kotaAsli.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
             folderPath = sanitize(formattedKota) + '/';

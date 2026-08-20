@@ -1905,7 +1905,9 @@ function setupFormSubmit(formId, tabName) {
           jenisLaporan,
           desaCode,
           sasaran: sasaran,
-          isBatchKabupaten: queue.length > 1 && (document.getElementById(`create-folder-${tabName}`) ? document.getElementById(`create-folder-${tabName}`).checked : true)
+          folderMode: document.querySelector(`input[name="folder-mode-${tabName}"]:checked`)?.value || 'kab',
+          tabelName: (urlTableData[tabName] && urlTableData[tabName][activeSubmenuId] && urlTableData[tabName][activeSubmenuId].find(e => e.url === item.url)) ? urlTableData[tabName][activeSubmenuId].find(e => e.url === item.url).nama : '',
+          isBatchKabupaten: queue.length > 1 && (document.querySelector(`input[name="folder-mode-${tabName}"]:checked`)?.value === 'kab' || document.querySelector(`input[name="folder-mode-${tabName}"]:checked`)?.value === undefined)
         };
 
         if (tabName === 'bulanan') {
@@ -1969,7 +1971,9 @@ function setupFormSubmit(formId, tabName) {
                   jenisLaporan,
                   desaCode,
                   sasaran: item.sasaran || detectSasaranFromUrl(item.url),
-                  isBatchKabupaten: queue.length > 1 && (document.getElementById(`create-folder-${tabName}`) ? document.getElementById(`create-folder-${tabName}`).checked : true)
+                  folderMode: document.querySelector(`input[name="folder-mode-${tabName}"]:checked`)?.value || 'kab',
+                  tabelName: (urlTableData[tabName] && urlTableData[tabName][activeSubmenuId] && urlTableData[tabName][activeSubmenuId].find(e => e.url === item.url)) ? urlTableData[tabName][activeSubmenuId].find(e => e.url === item.url).nama : '',
+                  isBatchKabupaten: queue.length > 1 && (document.querySelector(`input[name="folder-mode-${tabName}"]:checked`)?.value === 'kab' || document.querySelector(`input[name="folder-mode-${tabName}"]:checked`)?.value === undefined)
                 };
 
                 if (tabName === 'bulanan') {
@@ -2048,7 +2052,9 @@ function setupFormSubmit(formId, tabName) {
                 jenisLaporan,
                 desaCode,
                 sasaran: item.sasaran || detectSasaranFromUrl(item.url),
-                isBatchKabupaten: queue.length > 1 && (document.getElementById(`create-folder-${tabName}`) ? document.getElementById(`create-folder-${tabName}`).checked : true)
+                folderMode: document.querySelector(`input[name="folder-mode-${tabName}"]:checked`)?.value || 'kab',
+                tabelName: (urlTableData[tabName] && urlTableData[tabName][activeSubmenuId] && urlTableData[tabName][activeSubmenuId].find(e => e.url === item.url)) ? urlTableData[tabName][activeSubmenuId].find(e => e.url === item.url).nama : '',
+                isBatchKabupaten: queue.length > 1 && (document.querySelector(`input[name="folder-mode-${tabName}"]:checked`)?.value === 'kab' || document.querySelector(`input[name="folder-mode-${tabName}"]:checked`)?.value === undefined)
               };
               if (tabName === 'bulanan') {
                 dataSingle.faskes = item.faskes || '';
@@ -2755,12 +2761,13 @@ function saveUserPrefs() {
       if (el) prefs[id] = el.value;
     });
     const cbOptionIds = tab === 'tahunan'
-      ? ['enable-close-delay-tahunan', 'enable-open-delay-tahunan', 'download-all-kec-tahunan', 'download-all-desa-tahunan', 'create-folder-tahunan']
-      : ['enable-close-delay-bulanan', 'enable-open-delay-bulanan', 'download-all-kec-bulanan', 'download-all-desa-bulanan', 'create-folder-bulanan'];
+      ? ['enable-close-delay-tahunan', 'enable-open-delay-tahunan', 'download-all-kec-tahunan', 'download-all-desa-tahunan']
+      : ['enable-close-delay-bulanan', 'enable-open-delay-bulanan', 'download-all-kec-bulanan', 'download-all-desa-bulanan'];
     cbOptionIds.forEach(id => {
       const el = document.getElementById(id);
       if (el) prefs[id] = el.checked;
     });
+    prefs[`folder_mode_${tab}`] = document.querySelector(`input[name="folder-mode-${tab}"]:checked`)?.value || 'kab';
   });
   // Simpan closeDelay & openDelay sebagai key terpisah agar bisa dibaca content.js
   const activeCloseDelay = (() => {
@@ -2835,8 +2842,8 @@ function restoreUserPrefs() {
         if (el && prefs[id] !== undefined) el.value = prefs[id];
       });
       const cbOptionIds = tab === 'tahunan'
-        ? ['enable-close-delay-tahunan', 'enable-open-delay-tahunan', 'download-all-kec-tahunan', 'download-all-desa-tahunan', 'create-folder-tahunan']
-        : ['enable-close-delay-bulanan', 'enable-open-delay-bulanan', 'download-all-kec-bulanan', 'download-all-desa-bulanan', 'create-folder-bulanan'];
+        ? ['enable-close-delay-tahunan', 'enable-open-delay-tahunan', 'download-all-kec-tahunan', 'download-all-desa-tahunan']
+        : ['enable-close-delay-bulanan', 'enable-open-delay-bulanan', 'download-all-kec-bulanan', 'download-all-desa-bulanan'];
       cbOptionIds.forEach(id => {
         const el = document.getElementById(id);
         if (el && prefs[id] !== undefined) {
@@ -2850,6 +2857,10 @@ function restoreUserPrefs() {
           }
         }
       });
+      if (prefs[`folder_mode_${tab}`]) {
+        const rb = document.querySelector(`input[name="folder-mode-${tab}"][value="${prefs[`folder_mode_${tab}`]}"]`);
+        if (rb) rb.checked = true;
+      }
       // Restore kab/kota
       if (prefs[`cities_${tab}`]?.length) {
         prefs[`cities_${tab}`].forEach(val => {
