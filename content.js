@@ -8,7 +8,6 @@
   // 4 channel: (1) direct message, (2) storage tab-specific, (3) storage universal, (4) active poll ke background
   function waitForDownloadComplete(tabId, timeoutMs = 90000) {
     const storageKeyTab = `downloadResult_${tabId}`;
-    const storageKeyLast = 'siga_last_download';
     const startTs = Date.now();
 
     return new Promise((resolve) => {
@@ -24,7 +23,7 @@
         clearInterval(pollId);
         clearInterval(bgPollId);
         chrome.runtime.onMessage.removeListener(msgListener);
-        chrome.storage.local.remove([storageKeyTab, storageKeyLast]);
+        chrome.storage.local.remove([storageKeyTab]);
         console.log(`[download-wait] Selesai via ${source}: ${success ? 'SUCCESS' : 'FAIL/TIMEOUT'}`);
         resolve(success);
       };
@@ -36,17 +35,13 @@
       };
       chrome.runtime.onMessage.addListener(msgListener);
 
-      // Channel 2 & 3: poll storage setiap 500ms
+      // Channel 2: poll storage setiap 500ms
       pollId = setInterval(() => {
-        chrome.storage.local.get([storageKeyTab, storageKeyLast], (res) => {
+        chrome.storage.local.get([storageKeyTab], (res) => {
           const tabResult = res[storageKeyTab];
           if (tabResult && tabResult.ts >= startTs) {
             finish(tabResult.state === 'complete', 'storage-tab');
             return;
-          }
-          const lastResult = res[storageKeyLast];
-          if (lastResult && lastResult.ts >= startTs) {
-            finish(lastResult.state === 'complete', 'storage-last');
           }
         });
       }, 500);

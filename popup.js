@@ -1044,6 +1044,80 @@ function handleRetryAll() {
   });
 }
 
+// Handler untuk memverifikasi apakah file yang sudah selesai benar-benar ada di komputer
+async function handleVerifyDownloads() {
+  const btn = document.getElementById('verify-downloads-btn');
+  if (!confirm("Fitur ini akan mengecek apakah file yang berstatus 'Berhasil' masih benar-benar ada di folder laptop Anda (berdasarkan riwayat Chrome Downloads). File yang tidak ditemukan akan diubah menjadi 'GAGAL (Hilang)'. Lanjutkan?")) return;
+  
+  btn.textContent = "🔍 Sedang Verifikasi...";
+  btn.disabled = true;
+
+  try {
+    const data = await new Promise(resolve => chrome.storage.local.get(null, resolve));
+    const successKeys = Object.keys(data).filter(k => k.startsWith('tabdownload_') && data[k].status === 'success');
+    
+    if (successKeys.length === 0) {
+      alert("Tidak ada antrean file dengan status 'Berhasil' untuk diverifikasi.");
+      return;
+    }
+
+    const downloads = await new Promise(resolve => {
+      chrome.downloads.search({ state: 'complete' }, resolve);
+    });
+
+    const downloadedFiles = downloads.map(d => {
+      return String(d.filename || d.url).replace(/[:\\/\"?~<>*|]/g, "-").replace(/\s+/g, "_").trim().toLowerCase();
+    });
+
+    let verifiedCount = 0;
+    let missingCount = 0;
+    const updates = {};
+
+    for (const key of successKeys) {
+      const item = data[key];
+      const rawPlace = item.desa || item.faskes || item.kecamatan || item.kota || item.fileAkhir || '';
+      
+      // Ambil semua kata alfanumerik dari nama tempat
+      const words = String(rawPlace).toLowerCase().split(/[^a-z0-9]+/g).filter(w => w.length > 0);
+      
+      // Jika mode tabel, ambil nama tabel dari URL agar file dengan lokasi yang sama bisa dibedakan
+      const urlParts = String(item.url).toLowerCase().split(/[^a-z0-9]+/g).filter(w => w.length > 0);
+      const tabelWords = urlParts.filter(w => w.startsWith('tabel'));
+      
+      const matchWords = [...words, ...tabelWords];
+
+      let found = false;
+      if (matchWords.length > 0) {
+        // Harus mengandung SEMUA kata kunci (lokasi + nama tabel jika ada)
+        found = downloadedFiles.some(f => matchWords.every(w => f.includes(w)));
+      } else {
+        found = true; // Fallback
+      }
+
+      if (!found) {
+        updates[key] = { ...item, status: 'fail', fileAkhir: item.fileAkhir + ' (Hilang/Belum Terdownload)' };
+        missingCount++;
+      } else {
+        verifiedCount++;
+      }
+    }
+
+    if (missingCount > 0) {
+      await new Promise(resolve => chrome.storage.local.set(updates, resolve));
+      alert(`⚠️ Verifikasi Selesai!\n- Ditemukan (Aman): ${verifiedCount} file\n- Hilang/Tidak Ada: ${missingCount} file\n\n[Info Debug: File di History Chrome: ${downloads.length}]\n\nSilakan klik tombol "Retry Semua Gagal" untuk mendownload ulang file yang hilang.`);
+      renderDownloadTab();
+    } else {
+      alert(`✅ Verifikasi Selesai!\nSemua ${verifiedCount} file berhasil terdeteksi utuh di folder laptop Anda.\n[Info Debug: File di History Chrome: ${downloads.length}]`);
+    }
+  } catch (error) {
+    console.error("Error verifying downloads:", error);
+    alert("Terjadi kesalahan saat memverifikasi: " + error.message);
+  } finally {
+    btn.textContent = "🔍 Verifikasi File";
+    btn.disabled = false;
+  }
+}
+
 // Handler untuk membersihkan entry yang sudah selesai (success)
 function handleClearDone() {
   chrome.storage.local.get(null, function (data) {
@@ -1164,6 +1238,7 @@ tabButtons.forEach(button => {
 
 // Tombol Retry Semua & Bersihkan Selesai di tab Download
 document.getElementById('retry-all-btn')?.addEventListener('click', handleRetryAll);
+document.getElementById('verify-downloads-btn')?.addEventListener('click', handleVerifyDownloads);
 document.getElementById('clear-done-btn')?.addEventListener('click', handleClearDone);
 document.getElementById('stop-all-btn')?.addEventListener('click', handleStopAllDownloads);
 document.getElementById('reload-siga-tabs-btn')?.addEventListener('click', handleReloadSigaTabs);

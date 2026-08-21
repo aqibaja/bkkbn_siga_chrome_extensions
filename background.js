@@ -805,8 +805,7 @@ chrome.downloads.onChanged.addListener((delta) => {
         console.log(`[download-track] SIGA download ${delta.id} ${state} tabId=${tabId}`);
 
         // Selalu tulis ke storage untuk setiap SIGA download
-        // 'siga_last_download' = fallback universal (tabId berapapun, bahkan -1)
-        const toSet = { siga_last_download: result };
+        const toSet = {};
         if (typeof tabId === 'number' && tabId >= 0) {
             toSet[`downloadResult_${tabId}`] = result;
         }
