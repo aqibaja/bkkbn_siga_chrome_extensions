@@ -78,6 +78,62 @@
           </select>
         </div>
 
+        <!-- Mode Monitoring: Provinsi / Per Kecamatan / Paralel Batch -->
+        <div class="form-group" style="margin-bottom:10px;">
+          <label>Mode Monitoring:</label>
+          <div style="display:flex; gap:16px; margin-top:6px; flex-wrap:wrap;">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+              <input type="radio" name="monitoring-mode" id="monitoring-mode-prov" value="provinsi" checked>
+              🗺️ Semua Kab. (Provinsi)
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+              <input type="radio" name="monitoring-mode" id="monitoring-mode-kec" value="kecamatan">
+              📍 Per Kecamatan
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+              <input type="radio" name="monitoring-mode" id="monitoring-mode-batch" value="batch">
+              🚀 Paralel (Semua Kab.)
+            </label>
+          </div>
+        </div>
+
+        <!-- Dropdown kabupaten — hanya tampil saat mode = Per Kecamatan -->
+        <div class="form-group" id="monitoring-kab-group" style="display:none; margin-bottom:10px;">
+          <label for="monitoring-kab">Pilih Kabupaten:</label>
+          <select id="monitoring-kab" style="margin-top:4px;">
+            <!-- diisi oleh popup.js dari cities array -->
+          </select>
+          <div id="monitoring-kec-info" class="text-muted" style="margin-top:5px; font-size:12px; color:#2a7a2a;"></div>
+        </div>
+
+        <!-- Panel info batch — hanya tampil saat mode = Paralel -->
+        <div id="monitoring-batch-group"
+          style="display:none; margin-bottom:10px; background:#eef9ff; border:1px solid #b8d4f0; border-radius:6px; padding:10px;">
+          <div style="font-weight:600; margin-bottom:4px; color:#1a5f7a; display:flex; align-items:center; gap:6px;">
+            <span>🚀</span> Mode Paralel Semua Kabupaten
+          </div>
+          <div id="monitoring-batch-info" class="text-muted" style="font-size:12px; color:#444; line-height:1.4;">
+            Seluruh kabupaten (Aceh) akan dibuka secara otomatis secara bertahap (staggered) untuk mengambil data secara
+            simultan. Sangat cepat & efisien!
+          </div>
+        </div>
+
+
+
+        <!-- Progress batch — tampil saat batch berjalan -->
+        <div id="monitoring-batch-progress" style="display:none; margin-bottom:10px;">
+          <div style="font-weight:600; margin-bottom:6px; font-size:13px;">📊 Progress Paralel:</div>
+          <div id="monitoring-batch-progress-list"
+            style="max-height:200px; overflow-y:auto; font-size:12px; border:1px solid #ddd; border-radius:4px; padding:8px; background:#fafafa;">
+          </div>
+          <div style="margin-top:8px; display:flex; gap:8px;">
+            <button id="copy-batch-result" type="button" class="btn-copy">📋 Salin Semua ke Clipboard</button>
+            <button id="reset-batch-btn" type="button" class="btn-reset-monitoring" style="font-size:12px;">🗑️ Reset
+              Batch</button>
+            <span id="copy-batch-note" class="text-muted" style="font-size:12px;"></span>
+          </div>
+        </div>
+
         <div class="grid-2-col">
           <div class="form-group">
             <label for="monitoring-initial-wait">Initial wait (detik):</label>
@@ -146,6 +202,49 @@
               </div>
               <div id="cities-tahunan" class="checkbox-grid"></div>
             </div>
+            <div id="download-all-group-tahunan"
+              style="display:none; margin-top: 8px; flex-direction: column; align-items: flex-start; gap: 8px; padding: 10px; background: #f0f7ff; border: 1px solid #cce3ff; border-radius: 6px;">
+              <div style="width: 100%; border-bottom: 1px solid #cce3ff; padding-bottom: 8px; margin-bottom: 4px;">
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                  <div style="display: flex; align-items: center; gap: 8px; text-align: left;">
+                    <input type="radio" name="folder-mode-tahunan" id="folder-mode-kab-tahunan" value="kab" style="cursor:pointer; width:16px; height:16px; margin:0;" checked>
+                    <label for="folder-mode-kab-tahunan" style="font-weight:bold; color:#0c4a6e; cursor:pointer; margin:0; text-transform:none; font-size:13px; line-height: 1.2;">📁 Buat Folder per Kab/Kota</label>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 8px; text-align: left;">
+                    <input type="radio" name="folder-mode-tahunan" id="folder-mode-tabel-tahunan" value="tabel" style="cursor:pointer; width:16px; height:16px; margin:0;">
+                    <label for="folder-mode-tabel-tahunan" style="font-weight:bold; color:#0c4a6e; cursor:pointer; margin:0; text-transform:none; font-size:13px; line-height: 1.2;">📁 Buat Folder per Tabel</label>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 8px; text-align: left;">
+                    <input type="radio" name="folder-mode-tahunan" id="folder-mode-none-tahunan" value="none" style="cursor:pointer; width:16px; height:16px; margin:0;">
+                    <label for="folder-mode-none-tahunan" style="font-weight:bold; color:#0c4a6e; cursor:pointer; margin:0; text-transform:none; font-size:13px; line-height: 1.2;">📁 Tanpa Folder</label>
+                  </div>
+                </div>
+              </div>
+              <div style="width: 100%;">
+                <div style="display: flex; align-items: center; gap: 8px; text-align: left;">
+                  <input type="checkbox" id="download-all-kec-tahunan"
+                    style="cursor:pointer; width:16px; height:16px; margin:0;">
+                  <label for="download-all-kec-tahunan"
+                    style="font-weight:bold; color:#0c4a6e; cursor:pointer; margin:0; text-transform:none; font-size:13px; line-height: 1.2;">⬇️
+                    Download Semua Kecamatan (Tanpa Desa)</label>
+                </div>
+                <div id="download-all-kec-count-tahunan"
+                  style="margin-left: 24px; font-size: 12px; font-weight: bold; color: #dc2626; display: none; text-align: left; margin-top:4px;">
+                </div>
+              </div>
+              <div style="width: 100%;">
+                <div style="display: flex; align-items: center; gap: 8px; text-align: left;">
+                  <input type="checkbox" id="download-all-desa-tahunan"
+                    style="cursor:pointer; width:16px; height:16px; margin:0;">
+                  <label for="download-all-desa-tahunan"
+                    style="font-weight:bold; color:#0c4a6e; cursor:pointer; margin:0; text-transform:none; font-size:13px; line-height: 1.2;">⬇️
+                    Download Semua Desa</label>
+                </div>
+                <div id="download-all-desa-count-tahunan"
+                  style="margin-left: 24px; font-size: 12px; font-weight: bold; color: #dc2626; display: none; text-align: left; margin-top:4px;">
+                </div>
+              </div>
+            </div>
             <div class="form-group" id="kecamatan-group-tahunan" style="display:none;">
               <label>Pilih Kecamatan (bisa lebih dari satu):</label>
               <!-- Hidden input for JS value compatibility -->
@@ -154,17 +253,20 @@
                 <button type="button" class="btn-outline" id="select-all-kecamatan-tahunan">Pilih Semua</button>
                 <button type="button" class="btn-outline" id="reset-kecamatan-tahunan">Reset</button>
               </div>
-              <div id="kecamatan-checkboxes-tahunan" class="checkbox-grid" style="max-height:200px;overflow-y:auto;overscroll-behavior:contain;">
+              <div id="kecamatan-checkboxes-tahunan" class="checkbox-grid"
+                style="max-height:200px;overflow-y:auto;overscroll-behavior:contain;">
               </div>
             </div>
             <div class="form-group" id="desa-selector-tahunan" style="display:none;">
               <label>Pilih Desa/Kel:</label>
-              <input type="text" id="desa-search-tahunan" class="desa-search-input" placeholder="🔍 Ketik nama desa untuk filter..." style="margin-top:6px;">
+              <input type="text" id="desa-search-tahunan" class="desa-search-input"
+                placeholder="🔍 Ketik nama desa untuk filter..." style="margin-top:6px;">
               <div class="button-group" style="margin-bottom:6px;margin-top: 6px;">
                 <button type="button" class="btn-outline" id="select-all-desa-tahunan">Pilih Semua</button>
                 <button type="button" class="btn-outline" id="reset-desa-tahunan">Reset</button>
               </div>
-              <div id="desa-checkboxes-tahunan" class="checkbox-grid tabel-checkbox-grid" style="max-height:220px;overflow-y:auto;"></div>
+              <div id="desa-checkboxes-tahunan" class="checkbox-grid tabel-checkbox-grid"
+                style="max-height:220px;overflow-y:auto;"></div>
               <div id="desa-count-tahunan" class="tabel-count">0 dipilih</div>
             </div>
             <div class="form-group">
@@ -183,6 +285,35 @@
                 <option value="detail">Detail</option>
               </select>
             </div>
+
+            <div class="form-group">
+              <label for="mode-eksekusi-tahunan">Mode Eksekusi:</label>
+              <select id="mode-eksekusi-tahunan">
+                <option value="paralel">Paralel (Semua sekaligus)</option>
+                <option value="batch" selected>Batch Automation (Antrean Paralel)</option>
+              </select>
+              <div id="batch-size-panel-tahunan" style="margin-top: 8px;">
+                <label for="batch-size-tahunan">Jumlah tab per batch:</label>
+                <input type="number" id="batch-size-tahunan" min="1" max="100" value="10"
+                  style="width:80px;margin-left:8px;">
+                <div class="text-muted" style="margin-top:4px;">Default: 10 tab per batch.</div>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <div class="checkbox-inline">
+                <input type="checkbox" id="enable-open-delay-tahunan" checked>
+                <label for="enable-open-delay-tahunan">Waktu tunggu awal saat tab dibuka</label>
+              </div>
+              <div id="open-delay-panel-tahunan" class="close-delay-panel" style="display:block;">
+                <label for="open-delay-tahunan">Durasi (detik):</label>
+                <input type="number" id="open-delay-tahunan" min="1" max="300" value="5"
+                  style="width:80px;margin-left:8px;">
+                <div class="text-muted" style="margin-top:4px;">Tunggu data website SIGA selesai termuat sebelum
+                  automation jalan. Default: 5 detik.</div>
+              </div>
+            </div>
+
             <div class="form-group">
               <div class="checkbox-inline">
                 <input type="checkbox" id="enable-close-delay-tahunan">
@@ -220,9 +351,12 @@
               <div id="url-count-bulanan" class="url-count">0 URL valid</div>
             </div>
             <div class="form-group">
-              <label for="periode-bulanan">Periode (Bulan):</label>
+              <label for="periode-bulanan">Periode (Bulan/Semester):</label>
               <select id="periode-bulanan">
-                <option value="" selected>Pilih bulan</option>
+                <option value="" selected>Pilih bulan/semester</option>
+                <option value="1">Semester 1</option>
+                <option value="2">Semester 2</option>
+                <option disabled>──────────</option>
                 <option value="Januari">Januari</option>
                 <option value="Februari">Februari</option>
                 <option value="Maret">Maret</option>
@@ -249,6 +383,49 @@
               </div>
               <div id="cities-bulanan" class="checkbox-grid"></div>
             </div>
+            <div id="download-all-group-bulanan"
+              style="display:none; margin-top: 8px; flex-direction: column; align-items: flex-start; gap: 8px; padding: 10px; background: #f0f7ff; border: 1px solid #cce3ff; border-radius: 6px;">
+              <div style="width: 100%; border-bottom: 1px solid #cce3ff; padding-bottom: 8px; margin-bottom: 4px;">
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                  <div style="display: flex; align-items: center; gap: 8px; text-align: left;">
+                    <input type="radio" name="folder-mode-bulanan" id="folder-mode-kab-bulanan" value="kab" style="cursor:pointer; width:16px; height:16px; margin:0;" checked>
+                    <label for="folder-mode-kab-bulanan" style="font-weight:bold; color:#0c4a6e; cursor:pointer; margin:0; text-transform:none; font-size:13px; line-height: 1.2;">📁 Buat Folder per Kab/Kota</label>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 8px; text-align: left;">
+                    <input type="radio" name="folder-mode-bulanan" id="folder-mode-tabel-bulanan" value="tabel" style="cursor:pointer; width:16px; height:16px; margin:0;">
+                    <label for="folder-mode-tabel-bulanan" style="font-weight:bold; color:#0c4a6e; cursor:pointer; margin:0; text-transform:none; font-size:13px; line-height: 1.2;">📁 Buat Folder per Tabel</label>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 8px; text-align: left;">
+                    <input type="radio" name="folder-mode-bulanan" id="folder-mode-none-bulanan" value="none" style="cursor:pointer; width:16px; height:16px; margin:0;">
+                    <label for="folder-mode-none-bulanan" style="font-weight:bold; color:#0c4a6e; cursor:pointer; margin:0; text-transform:none; font-size:13px; line-height: 1.2;">📁 Tanpa Folder</label>
+                  </div>
+                </div>
+              </div>
+              <div style="width: 100%;">
+                <div style="display: flex; align-items: center; gap: 8px; text-align: left;">
+                  <input type="checkbox" id="download-all-kec-bulanan"
+                    style="cursor:pointer; width:16px; height:16px; margin:0;">
+                  <label for="download-all-kec-bulanan"
+                    style="font-weight:bold; color:#0c4a6e; cursor:pointer; margin:0; text-transform:none; font-size:13px; line-height: 1.2;">⬇️
+                    Download Semua Kecamatan (Tanpa Desa/Faskes)</label>
+                </div>
+                <div id="download-all-kec-count-bulanan"
+                  style="margin-left: 24px; font-size: 12px; font-weight: bold; color: #dc2626; display: none; text-align: left; margin-top:4px;">
+                </div>
+              </div>
+              <div style="width: 100%;">
+                <div style="display: flex; align-items: center; gap: 8px; text-align: left;">
+                  <input type="checkbox" id="download-all-desa-bulanan"
+                    style="cursor:pointer; width:16px; height:16px; margin:0;">
+                  <label for="download-all-desa-bulanan"
+                    style="font-weight:bold; color:#0c4a6e; cursor:pointer; margin:0; text-transform:none; font-size:13px; line-height: 1.2;">⬇️
+                    Download Semua Desa/Faskes</label>
+                </div>
+                <div id="download-all-desa-count-bulanan"
+                  style="margin-left: 24px; font-size: 12px; font-weight: bold; color: #dc2626; display: none; text-align: left; margin-top:4px;">
+                </div>
+              </div>
+            </div>
             <div class="form-group" id="kecamatan-group-bulanan" style="display:none;">
               <label>Pilih Kecamatan (bisa lebih dari satu):</label>
               <!-- Hidden input for JS value compatibility -->
@@ -257,17 +434,20 @@
                 <button type="button" class="btn-outline" id="select-all-kecamatan-bulanan">Pilih Semua</button>
                 <button type="button" class="btn-outline" id="reset-kecamatan-bulanan">Reset</button>
               </div>
-              <div id="kecamatan-checkboxes-bulanan" class="checkbox-grid" style="max-height:200px;overflow-y:auto;overscroll-behavior:contain;">
+              <div id="kecamatan-checkboxes-bulanan" class="checkbox-grid"
+                style="max-height:200px;overflow-y:auto;overscroll-behavior:contain;">
               </div>
             </div>
             <div class="form-group" id="desa-selector-bulanan" style="display:none;">
               <label>Pilih Desa/Faskes:</label>
-              <input type="text" id="desa-search-bulanan" class="desa-search-input" placeholder="🔍 Ketik nama desa/faskes untuk filter..." style="margin-top:6px;">
+              <input type="text" id="desa-search-bulanan" class="desa-search-input"
+                placeholder="🔍 Ketik nama desa/faskes untuk filter..." style="margin-top:6px;">
               <div class="button-group" style="margin-bottom:6px;margin-top: 6px;">
                 <button type="button" class="btn-outline" id="select-all-desa-bulanan">Pilih Semua</button>
                 <button type="button" class="btn-outline" id="reset-desa-bulanan">Reset</button>
               </div>
-              <div id="desa-checkboxes-bulanan" class="checkbox-grid tabel-checkbox-grid" style="max-height:220px;overflow-y:auto;"></div>
+              <div id="desa-checkboxes-bulanan" class="checkbox-grid tabel-checkbox-grid"
+                style="max-height:220px;overflow-y:auto;"></div>
               <div id="faskes-count-bulanan" class="tabel-count">0 dipilih</div>
             </div>
             <div class="form-group">
@@ -278,6 +458,35 @@
                 <option value="detail">Detail</option>
               </select>
             </div>
+
+            <div class="form-group">
+              <label for="mode-eksekusi-bulanan">Mode Eksekusi:</label>
+              <select id="mode-eksekusi-bulanan">
+                <option value="paralel">Paralel (Semua sekaligus)</option>
+                <option value="batch" selected>Batch Automation (Antrean Paralel)</option>
+              </select>
+              <div id="batch-size-panel-bulanan" style="margin-top: 8px;">
+                <label for="batch-size-bulanan">Jumlah tab per batch:</label>
+                <input type="number" id="batch-size-bulanan" min="1" max="100" value="10"
+                  style="width:80px;margin-left:8px;">
+                <div class="text-muted" style="margin-top:4px;">Default: 10 tab per batch.</div>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <div class="checkbox-inline">
+                <input type="checkbox" id="enable-open-delay-bulanan" checked>
+                <label for="enable-open-delay-bulanan">Waktu tunggu awal saat tab dibuka</label>
+              </div>
+              <div id="open-delay-panel-bulanan" class="close-delay-panel" style="display:block;">
+                <label for="open-delay-bulanan">Durasi (detik):</label>
+                <input type="number" id="open-delay-bulanan" min="1" max="300" value="5"
+                  style="width:80px;margin-left:8px;">
+                <div class="text-muted" style="margin-top:4px;">Tunggu data website SIGA selesai termuat sebelum
+                  automation jalan. Default: 5 detik.</div>
+              </div>
+            </div>
+
             <div class="form-group">
               <div class="checkbox-inline">
                 <input type="checkbox" id="enable-close-delay-bulanan">
@@ -297,9 +506,16 @@
         <!-- Tab Download Progress -->
         <div id="download-content" class="tab-content">
           <h2 class="section-title">📥 Download Progress</h2>
-          <div class="download-action-bar">
+          <div class="download-action-bar" style="display: flex; flex-wrap: wrap; gap: 5px;">
             <button id="retry-all-btn" type="button" class="btn-retry-all">♻️ Retry Semua Gagal & Progress</button>
+            <button id="verify-downloads-btn" type="button" style="background-color: #f59e0b; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold;">🔍 Verifikasi File</button>
             <button id="clear-done-btn" type="button" class="btn-clear-done">🗑️ Bersihkan yang Selesai</button>
+            <button id="stop-all-btn" type="button" class="btn-stop-all"
+              style="background-color: #d32f2f; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold;">🛑
+              Stop Semua</button>
+            <button id="reload-siga-tabs-btn" type="button"
+              style="background-color: #3b82f6; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold;">🔄
+              Reload Semua Tab SIGA</button>
           </div>
           <div id="download-progress-list"></div>
         </div>
@@ -307,7 +523,7 @@
     </div><!-- /#form-screen -->
 
     <!-- Footer -->
-    <div class="footer-info">SIGA Smart Downloader v1.0 — BKKBN Aceh</div>
+    <div class="footer-info">SIGA Smart Downloader v2.0 — BKKBN Aceh</div>
   </div>
   <script src="popup.js"></script>
 </body>

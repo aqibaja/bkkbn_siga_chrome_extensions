@@ -172,30 +172,119 @@ function renderCheckboxes(containerId, tabName) {
 
   // Tambahkan handler disable saat render awal
   setTimeout(() => handleDisableInputs(tabName), 0);
-  // Fungsi untuk men-disable input selain jenis laporan jika lebih dari 1 kab/kota dipilih
-  function handleDisableInputs(tabName) {
-    const checked = document.querySelectorAll(`#cities-${tabName} input[type="checkbox"]:checked`);
-    const disable = checked.length > 1;
-    // Sembunyikan group kecamatan jika lebih dari 1 kab dipilih
-    const kecGroup = document.getElementById(`kecamatan-group-${tabName}`);
-    if (kecGroup) kecGroup.style.display = disable ? 'none' : '';
-    // Sembunyikan desa selector jika lebih dari 1 kab dipilih
-    const desaSelector = document.getElementById(`desa-selector-${tabName}`);
-    if (desaSelector) desaSelector.style.display = disable ? 'none' : '';
-    // Disable RW dan Sasaran
-    const idsToDisable = tabName === 'tahunan'
-      ? ['rw-tahunan', 'sasaran-tahunan']
-      : ['tahun'];
-    idsToDisable.forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.disabled = disable;
-    });
-    // Jenis laporan tetap enabled
-    const jenisLaporanId = tabName === 'tahunan' ? 'jenis-laporan-tahunan' : 'jenis-laporan-bulanan';
-    const jenisLaporanEl = document.getElementById(jenisLaporanId);
-    if (jenisLaporanEl) jenisLaporanEl.disabled = false;
-  }
 }
+
+// Fungsi untuk men-disable input selain jenis laporan jika lebih dari 1 kab/kota dipilih
+function handleDisableInputs(tabName) {
+  const checked = document.querySelectorAll(`#cities-${tabName} input[type="checkbox"]:checked`);
+  const disable = checked.length > 1;
+  const isDownloadAllDesa = document.getElementById(`download-all-desa-${tabName}`)?.checked;
+  const isDownloadAllKec = document.getElementById(`download-all-kec-${tabName}`)?.checked;
+  const hideKecDesa = disable || isDownloadAllDesa || isDownloadAllKec;
+
+  // Sembunyikan group kecamatan jika lebih dari 1 kab dipilih atau opsi semua dicentang
+  const kecGroup = document.getElementById(`kecamatan-group-${tabName}`);
+  if (kecGroup) kecGroup.style.display = hideKecDesa ? 'none' : '';
+  // Sembunyikan desa selector jika lebih dari 1 kab dipilih atau opsi semua dicentang
+  const desaSelector = document.getElementById(`desa-selector-${tabName}`);
+  if (desaSelector) desaSelector.style.display = hideKecDesa ? 'none' : '';
+  // Tampilkan opsi download semua desa jika minimal 1 kab dipilih
+  const downloadAllGroup = document.getElementById(`download-all-group-${tabName}`);
+  if (downloadAllGroup) downloadAllGroup.style.display = checked.length >= 1 ? 'flex' : 'none';
+
+  updateDownloadAllDesaCount(tabName);
+  updateDownloadAllKecCount(tabName);
+
+  // Disable RW dan Sasaran
+  const idsToDisable = tabName === 'tahunan'
+    ? ['rw-tahunan', 'sasaran-tahunan']
+    : ['tahun'];
+  idsToDisable.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = disable;
+  });
+  // Jenis laporan tetap enabled
+  const jenisLaporanId = tabName === 'tahunan' ? 'jenis-laporan-tahunan' : 'jenis-laporan-bulanan';
+  const jenisLaporanEl = document.getElementById(jenisLaporanId);
+  if (jenisLaporanEl) jenisLaporanEl.disabled = false;
+}
+
+function updateDownloadAllDesaCount(tabName) {
+  const countEl = document.getElementById(`download-all-desa-count-${tabName}`);
+  const checkbox = document.getElementById(`download-all-desa-${tabName}`);
+  const groupEl = document.getElementById(`download-all-group-${tabName}`);
+  if (!countEl || !checkbox || !groupEl) return;
+
+  if (groupEl.style.display === 'none' || !checkbox.checked) {
+    countEl.style.display = 'none';
+    return;
+  }
+
+  const selectedCities = Array.from(document.querySelectorAll(`#cities-${tabName} input[type="checkbox"]:checked`)).map(cb => cb.value);
+
+  let totalDesa = 0;
+  selectedCities.forEach(cityId => {
+    const kabNum = Number(cityId);
+    const allKecForCity = kecamatanData[cityId] || [];
+    allKecForCity.forEach(kec => {
+      const kecName = (kec.split(' - ')[1] || '').trim();
+      if (Array.isArray(wilayahData)) {
+        wilayahData.forEach(entry => {
+          const kodeKabObj = entry['KODE KABUPATEN'];
+          const kodeKab = kodeKabObj && typeof kodeKabObj === 'object' ? Object.values(kodeKabObj)[0] : kodeKabObj;
+          const namaKec = (entry['NAMA KECAMATAN'] || '').toString().trim();
+          if (Number(kodeKab) === kabNum && namaKec.toLowerCase() === kecName.toLowerCase()) {
+            totalDesa++;
+          }
+        });
+      }
+    });
+  });
+
+  countEl.textContent = `(Estimasi: ${totalDesa} desa/faskes akan didownload)`;
+  countEl.style.display = 'block';
+}
+
+function updateDownloadAllKecCount(tabName) {
+  const countEl = document.getElementById(`download-all-kec-count-${tabName}`);
+  const checkbox = document.getElementById(`download-all-kec-${tabName}`);
+  const groupEl = document.getElementById(`download-all-group-${tabName}`);
+  if (!countEl || !checkbox || !groupEl) return;
+
+  if (groupEl.style.display === 'none' || !checkbox.checked) {
+    countEl.style.display = 'none';
+    return;
+  }
+
+  const selectedCities = Array.from(document.querySelectorAll(`#cities-${tabName} input[type="checkbox"]:checked`)).map(cb => cb.value);
+
+  let totalKec = 0;
+  selectedCities.forEach(cityId => {
+    const allKecForCity = kecamatanData[cityId] || [];
+    totalKec += allKecForCity.length;
+  });
+
+  countEl.textContent = `(Estimasi: ${totalKec} kecamatan akan didownload)`;
+  countEl.style.display = 'block';
+}
+
+// Inisialisasi event listener untuk checkbox download-all-desa dan download-all-kec
+['tahunan', 'bulanan'].forEach(tabName => {
+  const cbDesa = document.getElementById(`download-all-desa-${tabName}`);
+  const cbKec = document.getElementById(`download-all-kec-${tabName}`);
+
+  if (cbDesa && cbKec) {
+    cbDesa.addEventListener('change', () => {
+      if (cbDesa.checked) cbKec.checked = false; // Mutually exclusive
+      handleDisableInputs(tabName);
+    });
+
+    cbKec.addEventListener('change', () => {
+      if (cbKec.checked) cbDesa.checked = false; // Mutually exclusive
+      handleDisableInputs(tabName);
+    });
+  }
+});
 
 // Tampilkan/sembunyikan group kecamatan berdasarkan kab/kota yang dipilih
 function updateKecamatanDropdown(tabName) {
@@ -553,7 +642,11 @@ tabButtons.forEach(button => {
 function setupSelectAll(buttonId, tabName) {
   document.getElementById(buttonId).addEventListener('click', () => {
     const checkboxes = document.querySelectorAll(`#cities-${tabName} input[type="checkbox"]`);
-    checkboxes.forEach(checkbox => { checkbox.checked = true; });
+    checkboxes.forEach(checkbox => {
+      checkbox.checked = true;
+      // Trigger change event to update UI
+      checkbox.dispatchEvent(new Event('change'));
+    });
   });
 }
 
@@ -618,6 +711,9 @@ function renderDownloadTab() {
         `;
       } else if (statClass === "downloading") {
         actionButtons = `
+          <button class="retry-progress-btn" data-url="${item.url}" style="background:#ff9800; color:#fff; border:none; padding:6px 12px; border-radius:4px; cursor:pointer; font-size:12px; margin-right:6px;">
+            🔄 Retry
+          </button>
           <button class="cancel-btn" data-url="${item.url}" style="background:#e12121; color:#fff; border:none; padding:6px 12px; border-radius:4px; cursor:pointer; font-size:12px;">
             ✖ Cancel & Close Tab
           </button>
@@ -643,11 +739,18 @@ function renderDownloadTab() {
     });
     document.getElementById("download-progress-list").innerHTML = blocks.length > 0 ? blocks.join("\n") : "<p>Tidak ada proses download.</p>";
 
-    // Attach event listeners untuk tombol Retry dan Cancel
+    // Attach event listeners untuk tombol Retry (fail) dan Retry (progress) dan Cancel
     document.querySelectorAll('.retry-btn').forEach(btn => {
       btn.addEventListener('click', function () {
         const url = this.getAttribute('data-url');
         handleRetryFailedItems(url);
+      });
+    });
+
+    document.querySelectorAll('.retry-progress-btn').forEach(btn => {
+      btn.addEventListener('click', function () {
+        const url = this.getAttribute('data-url');
+        handleRetryProgressItem(url);
       });
     });
 
@@ -758,69 +861,261 @@ function handleCancelAndCloseTab(url) {
   });
 }
 
+// Handler untuk retry item yang masih berstatus PROGRESS (stuck/macet)
+function handleRetryProgressItem(url) {
+  if (!confirm(`Retry proses yang sedang berjalan (PROGRESS) untuk URL:\n${url}?\n\nIni akan mereload tab yang sedang berjalan dari posisi saat ini.`)) return;
+
+  chrome.storage.local.get(null, function (data) {
+    const autoKeys = Object.keys(data).filter(k => k.startsWith('auto_'));
+    let found = false;
+
+    for (const key of autoKeys) {
+      const autoData = data[key];
+      if (!autoData || !autoData.downloadQueue) continue;
+
+      // Cek apakah auto_ ini milik URL yang di-retry
+      const firstItem = autoData.downloadQueue[0];
+      if (!firstItem || firstItem.url !== url) continue;
+
+      found = true;
+      // Reset retryCount dan cancelled agar dapat berjalan kembali
+      chrome.storage.local.set({
+        [key]: {
+          ...autoData,
+          cancelled: false,
+          retryCount: 0
+        }
+      }, () => {
+        // Kirim pesan ke background untuk reload tab
+        chrome.runtime.sendMessage({
+          action: 'retryFailedUrl',
+          url: url,
+          targetKey: key
+        }, resp => {
+          if (resp && resp.success) {
+            alert('🔄 Tab sedang di-reload. Proses akan dilanjutkan dari posisi terakhir.');
+          } else {
+            alert('⚠️ Tidak bisa me-reload tab. Tab mungkin sudah tertutup. Coba Cancel lalu jalankan ulang.');
+          }
+          setTimeout(() => renderDownloadTab(), 800);
+        });
+      });
+      break;
+    }
+
+    if (!found) {
+      // Cari dataSingle dari tabdownload_ untuk membuka tab baru jika tab sudah ditutup
+      const urlHash = safeUrlHash(url);
+      const tabKey = Object.keys(data).find(k => k.startsWith(`tabdownload_${urlHash}`));
+
+      if (tabKey && data[tabKey] && data[tabKey].dataSingle) {
+        chrome.runtime.sendMessage({ action: 'processData', data: data[tabKey].dataSingle });
+        chrome.storage.local.set({ [tabKey]: { ...data[tabKey], status: 'progress', fileAkhir: 'Retry (Tab Baru)...' } });
+        alert('🔄 Membuka tab baru untuk melanjutkan proses yang tertutup.');
+        setTimeout(() => renderDownloadTab(), 500);
+      } else {
+        alert('Tab untuk URL ini tidak ditemukan dan data state lama tidak lengkap.\nSilakan Cancel lalu jalankan ulang dari form awal.');
+      }
+    }
+  });
+}
+
+// Helper untuk menyimpan dataSingle ke tabdownload_ agar bisa di-retry meski tab sudah ditutup
+function saveRetryState(key, dataSingle) {
+  if (!key || !dataSingle) return;
+  chrome.storage.local.get([key], res => {
+    if (res[key]) {
+      chrome.storage.local.set({ [key]: { ...res[key], dataSingle } });
+    }
+  });
+}
+
 // Handler untuk retry semua item gagal dan/atau masih progress
 function handleRetryAll() {
   chrome.storage.local.get(null, function (data) {
-    const failedOrProgressEntries = Object.keys(data)
-      .filter(k => k.startsWith('tabdownload_'))
-      .filter(k => data[k].status === 'fail' || data[k].status === 'progress')
-      .map(k => data[k]);
+    // Retry item yang GAGAL (fail) atau yang masih BERJALAN (progress) karena mungkin stuck
+    const failedKeys = new Set(
+      Object.keys(data)
+        .filter(k => k.startsWith('tabdownload_') && (data[k].status === 'fail' || data[k].status === 'progress'))
+    );
 
-    if (failedOrProgressEntries.length === 0) {
-      alert('Tidak ada item yang gagal atau sedang berjalan untuk di-retry.');
+    if (failedKeys.size === 0) {
+      alert('Tidak ada item yang gagal (error) atau stuck untuk di-retry.');
       return;
     }
 
-    const uniqueUrls = [...new Set(failedOrProgressEntries.map(e => e.url).filter(Boolean))];
+    if (!confirm(`Retry ${failedKeys.size} item yang GAGAL atau masih PROGRESS?\n\nSemua item dengan status error atau masih berjalan akan di-restart.`)) return;
 
-    if (!confirm(`Retry semua ${failedOrProgressEntries.length} item (gagal/progress) untuk ${uniqueUrls.length} URL?\n\nProses ini akan memulai ulang semua download yang gagal atau terhenti.`)) return;
-
-    const autoKeys = Object.keys(data).filter(k => k.startsWith('auto_'));
     let retryCount = 0;
+    const handledFailedKeys = new Set();
+    const batchQueue = [];
 
-    uniqueUrls.forEach(url => {
-      for (const key of autoKeys) {
-        const autoData = data[key];
-        if (autoData && autoData.downloadQueue) {
-          const firstItem = autoData.downloadQueue[0];
-          if (firstItem && firstItem.url === url) {
-            const itemsToRetry = autoData.downloadQueue
-              .map((item, idx) => ({ item, idx }))
-              .filter(({ item }) => {
-                const itemHash = safeUrlHash(item.url);
-                const progressKeys = Object.keys(data).filter(k => k.startsWith(`tabdownload_${itemHash}`));
-                return progressKeys.some(pk => data[pk] && (data[pk].status === 'fail' || data[pk].status === 'progress'));
-              });
+    // 1. Retry yang masih ada auto_ state (tab masih aktif)
+    const autoKeys = Object.keys(data).filter(k => k.startsWith('auto_'));
+    autoKeys.forEach(autoKey => {
+      const autoData = data[autoKey];
+      if (!autoData || !autoData.downloadQueue || autoData.downloadQueue.length === 0) return;
 
-            if (itemsToRetry.length > 0) {
-              retryCount += itemsToRetry.length;
-              const firstIdx = itemsToRetry[0].idx;
-              chrome.storage.local.set({ [key]: { ...autoData, currentIndex: firstIdx, retryCount: 0 } }, () => {
-                itemsToRetry.forEach(({ item }) => {
-                  const itemHash = safeUrlHash(item.url);
-                  const progressKeys = Object.keys(data).filter(k => k.startsWith(`tabdownload_${itemHash}`));
-                  progressKeys.forEach(pk => {
-                    if (data[pk] && (data[pk].status === 'fail' || data[pk].status === 'progress')) {
-                      chrome.storage.local.set({ [pk]: { ...data[pk], status: 'progress', fileAkhir: item.kota || 'Retry...' } });
-                    }
-                  });
-                });
-                chrome.runtime.sendMessage({ action: 'retryFailedUrl', url, targetKey: key });
-              });
-            }
-            break;
-          }
+      const queue = autoData.downloadQueue;
+      const progressKey = autoData.progressKey;
+
+      // Cek apakah auto_ ini punya progress yang fail/progress
+      const isFailedByProgressKey = progressKey && failedKeys.has(progressKey);
+      const isFailedByHashSearch = !isFailedByProgressKey && queue.some(item => {
+        const itemHash = safeUrlHash(item.url);
+        return [...failedKeys].some(k => k.startsWith(`tabdownload_${itemHash}`));
+      });
+
+      if (!isFailedByProgressKey && !isFailedByHashSearch) return;
+
+      const pk = isFailedByProgressKey ? progressKey
+        : [...failedKeys].find(k => k.startsWith(`tabdownload_${safeUrlHash(queue[0]?.url || '')}`));
+
+      if (pk) handledFailedKeys.add(pk);
+
+      const currentRetryCount = (autoData.retryCount || 0);
+      if (currentRetryCount >= 5) {
+        console.warn(`[retry] Lewati ${autoKey} — sudah di-retry ${currentRetryCount}x`);
+        return;
+      }
+
+      // Ambil dataSingle dari pk, atau reconstruct dari autoData
+      let dataSingle = pk && data[pk] ? data[pk].dataSingle : null;
+      if (!dataSingle) {
+        dataSingle = {
+          downloadQueue: queue,
+          periode: autoData.periode,
+          selectedCities: autoData.selectedCities,
+          kecamatan: autoData.kecamatan,
+          jenisLaporan: autoData.jenisLaporan,
+          faskes: autoData.faskes,
+          tahun: autoData.tahun,
+          desa: autoData.desa,
+          rw: autoData.rw,
+          sasaran: autoData.sasaran,
+          menu: autoData.menu,
+          submenu: autoData.submenu,
+          progressKey: pk,
+          openDelay: autoData.openDelay
+        };
+      }
+
+      if (dataSingle) {
+        batchQueue.push(dataSingle);
+        retryCount++;
+        if (pk && data[pk]) {
+          chrome.storage.local.set({ [pk]: { ...data[pk], status: 'progress', fileAkhir: 'Retry (Batch)...' } });
+        }
+      }
+
+      // Hapus auto_ key and close tab so they don't become zombies
+      chrome.storage.local.remove(autoKey);
+      const tabId = parseInt(autoKey.replace('auto_', ''), 10);
+      if (tabId) chrome.tabs.remove(tabId).catch(() => { });
+    });
+
+    // 2. Retry yang tab-nya sudah ditutup (menggunakan dataSingle yang disimpan)
+    failedKeys.forEach(pk => {
+      if (!handledFailedKeys.has(pk)) {
+        const item = data[pk];
+        if (item && item.dataSingle) {
+          batchQueue.push(item.dataSingle);
+          retryCount++;
+          chrome.storage.local.set({ [pk]: { ...item, status: 'progress', fileAkhir: 'Retry (Batch)...' } });
         }
       }
     });
 
-    if (retryCount > 0) {
-      alert(`♻️ Retry dimulai untuk ${retryCount} item yang gagal/terhenti.`);
+    if (batchQueue.length > 0) {
+      // Ambil batch size dari input di UI jika ada, atau default ke 5
+      const batchSizeInput = document.getElementById('batch-size');
+      const batchSize = batchSizeInput ? parseInt(batchSizeInput.value, 10) || 5 : 5;
+
+      chrome.runtime.sendMessage({
+        action: 'startBatchDownload',
+        batchQueue: batchQueue,
+        batchSize: batchSize
+      });
+      alert(`♻️ Retry batch dimulai untuk ${batchQueue.length} item.`);
     } else {
-      alert('Tidak ada item yang dapat di-retry saat ini.');
+      alert('Tidak ada item yang dapat di-retry (kemungkinan tab sudah tertutup dan ini adalah sesi lama).');
     }
     setTimeout(() => renderDownloadTab(), 500);
   });
+}
+
+// Handler untuk memverifikasi apakah file yang sudah selesai benar-benar ada di komputer
+async function handleVerifyDownloads() {
+  const btn = document.getElementById('verify-downloads-btn');
+  if (!confirm("Fitur ini akan mengecek apakah file yang berstatus 'Berhasil' masih benar-benar ada di folder laptop Anda (berdasarkan riwayat Chrome Downloads). File yang tidak ditemukan akan diubah menjadi 'GAGAL (Hilang)'. Lanjutkan?")) return;
+  
+  btn.textContent = "🔍 Sedang Verifikasi...";
+  btn.disabled = true;
+
+  try {
+    const data = await new Promise(resolve => chrome.storage.local.get(null, resolve));
+    const successKeys = Object.keys(data).filter(k => k.startsWith('tabdownload_') && data[k].status === 'success');
+    
+    if (successKeys.length === 0) {
+      alert("Tidak ada antrean file dengan status 'Berhasil' untuk diverifikasi.");
+      return;
+    }
+
+    const downloads = await new Promise(resolve => {
+      chrome.downloads.search({ state: 'complete' }, resolve);
+    });
+
+    const downloadedFiles = downloads.map(d => {
+      return String(d.filename || d.url).replace(/[:\\/\"?~<>*|]/g, "-").replace(/\s+/g, "_").trim().toLowerCase();
+    });
+
+    let verifiedCount = 0;
+    let missingCount = 0;
+    const updates = {};
+
+    for (const key of successKeys) {
+      const item = data[key];
+      const rawPlace = item.desa || item.faskes || item.kecamatan || item.kota || item.fileAkhir || '';
+      
+      // Ambil semua kata alfanumerik dari nama tempat
+      const words = String(rawPlace).toLowerCase().split(/[^a-z0-9]+/g).filter(w => w.length > 0);
+      
+      // Jika mode tabel, ambil nama tabel dari URL agar file dengan lokasi yang sama bisa dibedakan
+      const urlParts = String(item.url).toLowerCase().split(/[^a-z0-9]+/g).filter(w => w.length > 0);
+      const tabelWords = urlParts.filter(w => w.startsWith('tabel'));
+      
+      const matchWords = [...words, ...tabelWords];
+
+      let found = false;
+      if (matchWords.length > 0) {
+        // Harus mengandung SEMUA kata kunci (lokasi + nama tabel jika ada)
+        found = downloadedFiles.some(f => matchWords.every(w => f.includes(w)));
+      } else {
+        found = true; // Fallback
+      }
+
+      if (!found) {
+        updates[key] = { ...item, status: 'fail', fileAkhir: item.fileAkhir + ' (Hilang/Belum Terdownload)' };
+        missingCount++;
+      } else {
+        verifiedCount++;
+      }
+    }
+
+    if (missingCount > 0) {
+      await new Promise(resolve => chrome.storage.local.set(updates, resolve));
+      alert(`⚠️ Verifikasi Selesai!\n- Ditemukan (Aman): ${verifiedCount} file\n- Hilang/Tidak Ada: ${missingCount} file\n\n[Info Debug: File di History Chrome: ${downloads.length}]\n\nSilakan klik tombol "Retry Semua Gagal" untuk mendownload ulang file yang hilang.`);
+      renderDownloadTab();
+    } else {
+      alert(`✅ Verifikasi Selesai!\nSemua ${verifiedCount} file berhasil terdeteksi utuh di folder laptop Anda.\n[Info Debug: File di History Chrome: ${downloads.length}]`);
+    }
+  } catch (error) {
+    console.error("Error verifying downloads:", error);
+    alert("Terjadi kesalahan saat memverifikasi: " + error.message);
+  } finally {
+    btn.textContent = "🔍 Verifikasi File";
+    btn.disabled = false;
+  }
 }
 
 // Handler untuk membersihkan entry yang sudah selesai (success)
@@ -833,6 +1128,44 @@ function handleClearDone() {
       return;
     }
     chrome.storage.local.remove(doneKeys, () => renderDownloadTab());
+  });
+}
+
+// Handler untuk stop semua download yang sedang berjalan
+function handleStopAllDownloads() {
+  if (!confirm('Apakah Anda yakin ingin membatalkan semua proses download yang sedang berjalan (termasuk antrean batch)?')) return;
+  chrome.runtime.sendMessage({ action: 'cancelAllDownloads' }, (resp) => {
+    // Juga perlu set state tabdownload_ menjadi fail dari sisi popup 
+    // untuk memastikan tampilan UI update jika background gagal mengubahnya
+    chrome.storage.local.get(null, result => {
+      const updates = {};
+      Object.keys(result).forEach(k => {
+        if (k.startsWith('tabdownload_') && result[k].status === 'progress') {
+          updates[k] = { ...result[k], status: 'fail', fileAkhir: 'Dibatalkan oleh user' };
+        }
+      });
+      if (Object.keys(updates).length > 0) {
+        chrome.storage.local.set(updates);
+      }
+      alert('✅ Semua proses download telah dibatalkan.');
+      setTimeout(() => renderDownloadTab(), 500);
+    });
+  });
+}
+
+// Handler untuk reload semua tab SIGA yang terbuka
+function handleReloadSigaTabs() {
+  chrome.tabs.query({ url: "*://newsiga-siga.kemendukbangga.go.id/*" }, (tabs) => {
+    if (!tabs || tabs.length === 0) {
+      alert('Tidak ada tab SIGA yang sedang terbuka.');
+      return;
+    }
+    if (confirm(`Apakah Anda yakin ingin me-reload ${tabs.length} tab SIGA?`)) {
+      tabs.forEach(tab => {
+        chrome.tabs.reload(tab.id);
+      });
+      alert(`✅ ${tabs.length} tab SIGA berhasil di-reload.`);
+    }
   });
 }
 
@@ -867,31 +1200,34 @@ function switchToDownloadTab() {
 }
 
 function initializeDownloadProgress(downloadQueue) {
-  // Buat entry progress per item di queue (agar banyak tab/entry per URL didukung)
-  const toSet = {};
-  const keys = [];
-  let idxCounter = 0;
-  downloadQueue.forEach((item, i) => {
-    const urlHash = safeUrlHash(item.url);
-    const key = `tabdownload_${urlHash}_${i}_${Date.now()}`;
-    keys.push(key);
-    const firstFile = item.kota || item.desa || "Memulai...";
-    toSet[key] = {
-      url: item.url,
-      status: "progress",
-      totalFiles: 1,
-      filesCompleted: 0,
-      fileAkhir: firstFile,
-      urlIndex: idxCounter++,
-      // keep kota/kecamatan/desa/faskes for display in progress UI
-      kota: item.kota || '',
-      kecamatan: item.kecamatan || '',
-      desa: item.desa || '',
-      faskes: item.faskes || ''
-    };
-  });
   return new Promise(resolve => {
+    const toSet = {};
+    // Satu entry progress per item di queue (1 tab per item — mode paralel)
+    const keys = [];
+    let idxCounter = 0;
+    downloadQueue.forEach((item, i) => {
+      const urlHash = safeUrlHash(item.url);
+      const key = `tabdownload_${urlHash}_${i}_${Date.now()}`;
+      keys.push(key);
+      const firstFile = item.kota || item.desa || "Memulai...";
+      toSet[key] = {
+        url: item.url,
+        status: "progress",
+        totalFiles: 1,
+        filesCompleted: 0,
+        fileAkhir: firstFile,
+        urlIndex: idxCounter++,
+        kota: item.kota || '',
+        kecamatan: item.kecamatan || '',
+        desa: item.desa || '',
+        faskes: item.faskes || ''
+      };
+    });
     chrome.storage.local.set(toSet, () => {
+      if (chrome.runtime.lastError) {
+        console.error("Storage error:", chrome.runtime.lastError);
+        alert("Gagal menyimpan progress! " + chrome.runtime.lastError.message);
+      }
       renderDownloadTab();
       resolve(keys);
     });
@@ -915,7 +1251,10 @@ tabButtons.forEach(button => {
 
 // Tombol Retry Semua & Bersihkan Selesai di tab Download
 document.getElementById('retry-all-btn')?.addEventListener('click', handleRetryAll);
+document.getElementById('verify-downloads-btn')?.addEventListener('click', handleVerifyDownloads);
 document.getElementById('clear-done-btn')?.addEventListener('click', handleClearDone);
+document.getElementById('stop-all-btn')?.addEventListener('click', handleStopAllDownloads);
+document.getElementById('reload-siga-tabs-btn')?.addEventListener('click', handleReloadSigaTabs);
 
 setupSelectAll('select-all-tahunan', 'tahunan');
 setupSelectAll('select-all-bulanan', 'bulanan');
@@ -931,11 +1270,34 @@ updateUrlCount('bulanan');
 function setupReset(buttonId, tabName) {
   document.getElementById(buttonId).addEventListener('click', () => {
     const checkboxes = document.querySelectorAll(`#cities-${tabName} input[type="checkbox"]`);
-    checkboxes.forEach(checkbox => { checkbox.checked = false; });
+    checkboxes.forEach(checkbox => {
+      checkbox.checked = false;
+      checkbox.dispatchEvent(new Event('change'));
+    });
   });
 }
 setupReset('reset-tahunan', 'tahunan');
 setupReset('reset-bulanan', 'bulanan');
+
+// ──────────────────────────────────────────────────────────
+// MONITORING K0 — Mode Kecamatan
+// ──────────────────────────────────────────────────────────
+
+/**
+ * Build queue berisi semua kecamatan dari satu kabupaten.
+ * Setiap entry: { id, name, kabId, kabName, isKecamatan: true }
+ */
+function buildKecamatanQueue(kabId) {
+  const kabCity = cities.find(c => c.id === kabId);
+  const kecList = kecamatanData[kabId] || [];
+  return kecList.map((kecName, idx) => ({
+    id: `${kabId}-${idx}`,
+    name: kecName,       // contoh: "04 - SEULIMEUM"
+    kabId,
+    kabName: kabCity ? kabCity.name : kabId,
+    isKecamatan: true
+  }));
+}
 
 // BKB monitoring panel utilities
 function setBkbMonitoringStatus(message) {
@@ -977,10 +1339,178 @@ function renderBkbMonitoringResults(results) {
 function setupBkbMonitoring() {
   const startBtn = document.getElementById('start-monitoring-k0');
   const resetBtn = document.getElementById('reset-monitoring-k0');
+  const kabGroup = document.getElementById('monitoring-kab-group');
+  const kabSelect = document.getElementById('monitoring-kab');
+  const kecInfo = document.getElementById('monitoring-kec-info');
+  const modeProvRadio = document.getElementById('monitoring-mode-prov');
+  const modeKecRadio = document.getElementById('monitoring-mode-kec');
+  const modeBatchRadio = document.getElementById('monitoring-mode-batch');
+  const batchGroup = document.getElementById('monitoring-batch-group');
+  const batchProgressEl = document.getElementById('monitoring-batch-progress');
 
+  let lastActiveKabId = null;
+
+  // ── Populate dropdown kabupaten dari array cities ──
+
+  if (kabSelect) {
+    kabSelect.innerHTML = '';
+    cities.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c.id;
+      opt.textContent = c.name;
+      kabSelect.appendChild(opt);
+    });
+  }
+
+  // ── Update info jumlah kecamatan saat kabupaten dipilih ──
+  function updateKecInfo() {
+    if (!kecInfo || !kabSelect) return;
+    const kabId = kabSelect.value;
+    const count = (kecamatanData[kabId] || []).length;
+    kecInfo.textContent = count > 0
+      ? `✔ ${count} kecamatan akan dimonitor`
+      : '⚠ Data kecamatan tidak tersedia untuk kabupaten ini';
+    kecInfo.style.color = count > 0 ? '#2a7a2a' : '#a00';
+  }
+
+  if (kabSelect) {
+    kabSelect.addEventListener('change', () => { updateKecInfo(); saveUserPrefs(); });
+    updateKecInfo();
+  }
+
+  // ── Toggle panel sesuai mode ──
+  function onModeChange() {
+    const isKec = modeKecRadio && modeKecRadio.checked;
+    const isBatch = modeBatchRadio && modeBatchRadio.checked;
+    if (kabGroup) kabGroup.style.display = isKec ? 'block' : 'none';
+    if (batchGroup) batchGroup.style.display = isBatch ? 'block' : 'none';
+    if (isKec) updateKecInfo();
+    saveUserPrefs();
+  }
+
+  if (modeProvRadio) modeProvRadio.addEventListener('change', onModeChange);
+  if (modeKecRadio) modeKecRadio.addEventListener('change', onModeChange);
+  if (modeBatchRadio) modeBatchRadio.addEventListener('change', onModeChange);
+
+  // ── Render progress batch per kabupaten (baca dari plan) ──
+  function renderBatchProgress(batchData) {
+    const listEl = document.getElementById('monitoring-batch-progress-list');
+    if (!listEl || !batchData) return;
+
+    const plan = batchData.plan || [];
+    const rows = plan.map(p => {
+      const total = (p.queue || []).length;
+      const done = (p.results || []).length;
+      const status = p.status || 'pending';
+      const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+      const statusIcon = status === 'done' ? '✅' : status === 'active' ? '⏳' : '⏸';
+      const barFill = status === 'done' ? '#18af34' : status === 'active' ? '#484dde' : '#ccc';
+      const activeAttr = status === 'active' ? 'id="batch-progress-active"' : '';
+      return `
+        <div ${activeAttr} style="margin-bottom:6px; padding: 2px 4px; border-radius: 4px; ${status === 'active' ? 'background: rgba(72, 77, 222, 0.08);' : ''}">
+          <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:2px;">
+            <span>${statusIcon} <strong>${p.kabName}</strong></span>
+            <span>${done}/${total} kec</span>
+          </div>
+          <div style="background:#e0e0e0;border-radius:4px;height:8px;overflow:hidden;">
+            <div style="background:${barFill};height:100%;width:${pct}%;transition:width 0.3s;"></div>
+          </div>
+        </div>`;
+    });
+
+    listEl.innerHTML = rows.join('');
+    if (batchProgressEl) batchProgressEl.style.display = 'block';
+
+    // Auto scroll kabupaten yang aktif ke dalam view HANYA saat berganti kabupaten (agar tidak mengganggu scroll manual user)
+    const activeItem = plan.find(p => p.status === 'active');
+    if (activeItem && activeItem.kabId !== lastActiveKabId) {
+      lastActiveKabId = activeItem.kabId;
+      const activeEl = document.getElementById('batch-progress-active');
+      if (activeEl) {
+        activeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }
+  }
+
+
+  // ── refreshStatus: poll bkbMonitoring (single-tab) + bkbMonitoringBatch (sequential) ──
   const refreshStatus = async () => {
-    chrome.storage.local.get('bkbMonitoring', (data) => {
-      const st = data.bkbMonitoring || null;
+    chrome.storage.local.get(null, (all) => {
+      const batch = all.bkbMonitoringBatch || null;
+      if (batch && Array.isArray(batch.plan) && batch.plan.length > 0) {
+        const plan = batch.plan;
+
+        // Overlay data live dari SEMUA tab paralel (bkbMonitoringKec_<tabId>) secara bebas write-collision
+        const activeKecKeys = Object.keys(all).filter(k => k.startsWith('bkbMonitoringKec_'));
+
+        // Buat map kabId -> tabState paling baru
+        const kabMap = {};
+        activeKecKeys.forEach(k => {
+          const tabState = all[k];
+          if (tabState && tabState.kabId) {
+            const existing = kabMap[tabState.kabId];
+            if (!existing || (tabState.lastUpdated || 0) > (existing.lastUpdated || 0)) {
+              kabMap[tabState.kabId] = tabState;
+            }
+          }
+        });
+
+        // Sinkronkan plan item secara dinamis dari map tabState
+        plan.forEach(p => {
+          const tabState = kabMap[p.kabId];
+          if (tabState) {
+            p.results = tabState.results || [];
+            p.currentIndex = tabState.currentIndex || 0;
+            p.status = tabState.mode === 'done' ? 'done' : 'active';
+          } else {
+            p.status = 'pending';
+          }
+        });
+
+        renderBatchProgress(batch);
+
+        const doneCount = plan.filter(p => p.status === 'done').length;
+        const activeItems = plan.filter(p => p.status === 'active');
+        const pendingItems = plan.filter(p => p.status === 'pending');
+
+        let statusText = `Batch: ${doneCount}/${plan.length} selesai`;
+        if (activeItems.length > 0) {
+          statusText += ` (${activeItems.length} aktif)`;
+        }
+        if (pendingItems.length > 0) {
+          statusText += ` [Menunggu: ${pendingItems.length}]`;
+        }
+        setBkbMonitoringStatus(statusText);
+        if (startBtn) startBtn.disabled = doneCount < plan.length;
+
+        // Update textarea dan preview secara REAL-TIME agar user tidak perlu menunggu semua selesai
+        const tsvLines = ['Kabupaten\tKecamatan\tTotal\tUpdate\tBelum'];
+        const previewLines = [];
+        plan.forEach(p => {
+          (p.results || []).forEach(r => {
+            tsvLines.push(`${p.kabName}\t${r.kota}\t${r.total ?? ''}\t${r.update ?? ''}\t${r.belum ?? ''}`);
+            previewLines.push(`${p.kabName} / ${r.kota} → Total: ${r.total} | Update: ${r.update} | Belum: ${r.belum}`);
+          });
+        });
+
+        const outEl = document.getElementById('monitoring-k0-output');
+        const resEl = document.getElementById('monitoring-k0-results');
+        if (outEl && tsvLines.length > 1) {
+          outEl.value = tsvLines.join('\n');
+        } else if (outEl && tsvLines.length === 1) {
+          outEl.value = ''; // Kosongkan jika belum ada data
+        }
+
+        if (resEl && previewLines.length > 0) {
+          resEl.textContent = previewLines.join('\n').slice(0, 1000) + (previewLines.length > 40 ? '\n...' : '');
+        } else if (resEl) {
+          resEl.textContent = 'Belum ada data.';
+        }
+        return;
+      }
+
+      // Poll single-tab monitoring
+      const st = all.bkbMonitoring || null;
       if (!st) {
         setBkbMonitoringStatus('Menunggu');
         renderBkbMonitoringResults([]);
@@ -988,11 +1518,14 @@ function setupBkbMonitoring() {
         return;
       }
       const { mode, currentIndex, queue, results } = st;
+      const isKecMode = queue && queue.length > 0 && queue[0].isKecamatan;
+      const unitLabel = isKecMode ? 'kecamatan' : 'kabupaten';
       if (mode === 'active') {
-        setBkbMonitoringStatus(`Jalankan: ${currentIndex || 0}/${(queue || []).length} kabupaten`);
+        const kabLabel = isKecMode && queue[0].kabName ? ` (${queue[0].kabName})` : '';
+        setBkbMonitoringStatus(`Berjalan: ${currentIndex || 0}/${(queue || []).length} ${unitLabel}${kabLabel}`);
         if (startBtn) startBtn.disabled = true;
       } else if (mode === 'done') {
-        setBkbMonitoringStatus(`Selesai: ${results ? results.length : 0} kabupaten`);
+        setBkbMonitoringStatus(`Selesai: ${results ? results.length : 0} ${unitLabel}`);
         if (startBtn) startBtn.disabled = false;
       } else {
         setBkbMonitoringStatus('Menunggu');
@@ -1002,17 +1535,89 @@ function setupBkbMonitoring() {
     });
   };
 
+  // ── Fungsi batch: sequential (1 tab aktif, chain ke tab berikutnya) ──
+  async function startBatchKecMonitoring(targetRoute, initialWaitMs, loopWaitMs) {
+    setBkbMonitoringStatus('Menyiapkan batch parallel queue...');
+
+    const plan = cities
+      .filter(c => (kecamatanData[c.id] || []).length > 0)
+      .map((kab, i) => ({
+        planIndex: i,
+        kabId: kab.id,
+        kabName: kab.name,
+        queue: buildKecamatanQueue(kab.id),
+        status: 'pending',
+        currentIndex: 0,
+        results: []
+      }));
+
+    if (plan.length === 0) {
+      setBkbMonitoringStatus('Tidak ada data kecamatan tersedia.');
+      if (startBtn) startBtn.disabled = false;
+      return;
+    }
+
+    // Langsung aktifkan semua kabupaten untuk dibuka secara bersamaan
+    const initialTabsCount = plan.length;
+
+    const batchMeta = {
+      plan, targetRoute, initialWaitMs, loopWaitMs,
+      startedAt: Date.now()
+    };
+
+    for (let i = 0; i < initialTabsCount; i++) {
+      plan[i].status = 'active';
+    }
+    batchMeta.plan = plan;
+    await new Promise(r => chrome.storage.local.set({ bkbMonitoringBatch: batchMeta }, r));
+
+    // Kirim pesan ke background script untuk membuka SEMUA tab kabupaten secara staggered
+    // agar browser tidak macet tetapi langsung memproses semuanya secara simultan.
+    chrome.runtime.sendMessage({
+      action: 'startBatchAutomation',
+      initialTabsCount
+    });
+
+    setBkbMonitoringStatus(`Batch: Membuka ${plan.length} kabupaten sekaligus...`);
+    if (startBtn) startBtn.disabled = true;
+  }
+
+
+  // ── Tombol Mulai ──
   if (startBtn) {
     startBtn.addEventListener('click', async () => {
       setBkbMonitoringStatus('Menyiapkan...');
       if (startBtn) startBtn.disabled = true;
-      const queue = cities.map(c => ({ id: c.id, name: c.name }));
-      // set initial state terlebih dahulu
+
       const targetRoute = document.getElementById('monitoring-target')?.value || '#/kegiatan/kelompok_bkb';
       const initialWaitSeconds = Number(document.getElementById('monitoring-initial-wait')?.value || 30);
       const loopWaitSeconds = Number(document.getElementById('monitoring-loop-wait')?.value || 8);
       const initialWaitMs = Math.max(1000, initialWaitSeconds * 1000);
       const loopWaitMs = Math.max(1000, loopWaitSeconds * 1000);
+
+      const isBatchMode = modeBatchRadio && modeBatchRadio.checked;
+      const isKecMode = modeKecRadio && modeKecRadio.checked;
+
+      // ── Mode Paralel Batch ──
+      if (isBatchMode) {
+        await startBatchKecMonitoring(targetRoute, initialWaitMs, loopWaitMs);
+        return;
+      }
+
+      // ── Mode single-tab (Provinsi / Per Kecamatan) ──
+      let queue;
+      if (isKecMode) {
+        const kabId = kabSelect ? kabSelect.value : null;
+        if (!kabId || (kecamatanData[kabId] || []).length === 0) {
+          alert('⚠ Data kecamatan tidak tersedia untuk kabupaten yang dipilih.');
+          if (startBtn) startBtn.disabled = false;
+          setBkbMonitoringStatus('Menunggu');
+          return;
+        }
+        queue = buildKecamatanQueue(kabId);
+      } else {
+        queue = cities.map(c => ({ id: c.id, name: c.name, isKecamatan: false }));
+      }
 
       chrome.storage.local.set({
         bkbMonitoring: {
@@ -1028,14 +1633,13 @@ function setupBkbMonitoring() {
           lastUpdated: Date.now()
         }
       }, () => {
-        chrome.tabs.create({ url: `https://newsiga-siga.bkkbn.go.id/${targetRoute}`, active: true }, (tab) => {
+        chrome.tabs.create({ url: `https://newsiga-siga.kemendukbangga.go.id/${targetRoute}`, active: true }, (tab) => {
           if (!tab || !tab.id) {
             alert('Gagal membuka tab monitoring; coba lagi.');
             setBkbMonitoringStatus('Error membuka tab.');
             if (startBtn) startBtn.disabled = false;
             return;
           }
-
           chrome.storage.local.get(['bkbMonitoring'], (existing) => {
             const targetRouteFromState = existing?.bkbMonitoring?.targetRoute || '#/kegiatan/kelompok_bkb';
             const initialWaitMsFromState = existing?.bkbMonitoring?.initialWaitMs || initialWaitMs;
@@ -1062,9 +1666,9 @@ function setupBkbMonitoring() {
     });
   }
 
+  // ── Salin hasil single-tab ──
   const copyBtn = document.getElementById('copy-bkb-result');
   const copyNote = document.getElementById('copy-bkb-result-note');
-
   if (copyBtn) {
     copyBtn.addEventListener('click', () => {
       const outEl = document.getElementById('monitoring-k0-output');
@@ -1079,21 +1683,89 @@ function setupBkbMonitoring() {
     });
   }
 
+  // ── Salin semua hasil batch ──
+  const copyBatchBtn = document.getElementById('copy-batch-result');
+  const copyBatchNote = document.getElementById('copy-batch-note');
+  if (copyBatchBtn) {
+    copyBatchBtn.addEventListener('click', () => {
+      // Coba baca dari textarea yang sudah diisi refreshStatus (paling reliable)
+      const outEl = document.getElementById('monitoring-k0-output');
+      if (outEl && outEl.value && outEl.value.trim() !== '') {
+        outEl.select();
+        document.execCommand('copy');
+        if (copyBatchNote) copyBatchNote.textContent = `Tersalin! (${outEl.value.split('\n').length - 1} baris data)`;
+        setTimeout(() => { if (copyBatchNote) copyBatchNote.textContent = ''; }, 3000);
+        return;
+      }
+
+      // Fallback: rebuild dari storage jika textarea belum terisi
+      chrome.storage.local.get(null, (all) => {
+        const batch = all.bkbMonitoringBatch;
+        if (!batch || !batch.tabs || batch.tabs.length === 0) {
+          if (copyBatchNote) copyBatchNote.textContent = '⚠ Belum ada data batch.';
+          return;
+        }
+        const lines = ['Kabupaten\tKecamatan\tTotal\tUpdate\tBelum'];
+        batch.tabs.forEach(t => {
+          const st = all[`bkbMonitoringKec_${t.tabId}`];
+          if (!st || !Array.isArray(st.results)) return;
+          st.results.forEach(r => {
+            lines.push(`${t.kabName}\t${r.kota}\t${r.total ?? ''}\t${r.update ?? ''}\t${r.belum ?? ''}`);
+          });
+        });
+        if (lines.length <= 1) {
+          if (copyBatchNote) copyBatchNote.textContent = '⚠ Hasil kosong, coba tunggu sebentar.';
+          return;
+        }
+        const tsv = lines.join('\n');
+        // Isi textarea dulu, lalu copy
+        if (outEl) {
+          outEl.value = tsv;
+          outEl.select();
+          document.execCommand('copy');
+          if (copyBatchNote) copyBatchNote.textContent = `Tersalin! (${lines.length - 1} baris data)`;
+          setTimeout(() => { if (copyBatchNote) copyBatchNote.textContent = ''; }, 3000);
+        }
+      });
+    });
+  }
+
+  // ── Reset batch ──
+  const resetBatchBtn = document.getElementById('reset-batch-btn');
+  if (resetBatchBtn) {
+    resetBatchBtn.addEventListener('click', () => {
+      chrome.storage.local.get(null, (all) => {
+        const keysToRemove = ['bkbMonitoringBatch'];
+        Object.keys(all).forEach(k => {
+          if (k.startsWith('bkbMonitoringKec_')) {
+            keysToRemove.push(k);
+          }
+        });
+        chrome.storage.local.remove(keysToRemove, () => {
+          if (batchProgressEl) batchProgressEl.style.display = 'none';
+          setBkbMonitoringStatus('Batch direset. Tekan Mulai.');
+          if (startBtn) startBtn.disabled = false;
+        });
+      });
+    });
+  }
+
+  // ── Reset single-tab monitoring ──
   if (resetBtn) {
     resetBtn.addEventListener('click', () => {
       chrome.storage.local.remove('bkbMonitoring', () => {
         setBkbMonitoringStatus('Direset. Tekan Mulai.');
         renderBkbMonitoringResults([]);
         if (startBtn) startBtn.disabled = false;
+        if (modeProvRadio) { modeProvRadio.checked = true; onModeChange(); }
       });
     });
   }
 
+  // Simpan preferensi saat setting berubah
   ['monitoring-target', 'monitoring-initial-wait', 'monitoring-loop-wait'].forEach(id => {
     const el = document.getElementById(id);
-    if (el) {
-      el.addEventListener('change', saveUserPrefs);
-    }
+    if (el) el.addEventListener('change', saveUserPrefs);
   });
 
   setInterval(refreshStatus, 1200);
@@ -1103,6 +1775,7 @@ function setupBkbMonitoring() {
 setupBkbMonitoring();
 
 // Form submit handlers
+
 function extractNumericCode(label) {
   if (!label) return '';
   const m = label.toString().trim().match(/^(\d+)/);
@@ -1133,6 +1806,15 @@ function setupFormSubmit(formId, tabName) {
         alert('⚠️ Tidak ada URL yang valid. Pastikan URL dimulai dengan http:// atau https://');
         return;
       }
+
+      const openDelaySec = (() => {
+        const enableId = `enable-open-delay-${tabName}`;
+        const delayId = `open-delay-${tabName}`;
+        const enabled = document.getElementById(enableId)?.checked;
+        if (enabled === false) return 0;
+        const el = document.getElementById(delayId);
+        return el ? (parseInt(el.value, 10) || 5) : 5;
+      })();
 
       const periode = document.getElementById(`periode-${tabName}`).value;
 
@@ -1166,8 +1848,49 @@ function setupFormSubmit(formId, tabName) {
       let selectedDesaFaskes = getSelectedDesaFaskes(tabName);
       let hasDesaSelected = selectedDesaFaskes.length > 0;
 
-      // Jika user pilih banyak kab/kota, setiap kab/kota dibuka di tab terpisah (mirip banyak url)
-      if (selectedCities.length > 1) {
+      const isDownloadAllDesa = document.getElementById(`download-all-desa-${tabName}`)?.checked;
+      const isDownloadAllKecamatan = document.getElementById(`download-all-kec-${tabName}`)?.checked;
+
+      if (isDownloadAllKecamatan && selectedCities.length >= 1) {
+        selectedCities.forEach(cityId => {
+          const allKecForCity = kecamatanData[cityId] || [];
+          allKecForCity.forEach(kec => {
+            urls.forEach(url => {
+              queue.push({ kota: cityNameMap[cityId], url, kecamatan: kec, kabCode: cityId });
+            });
+          });
+        });
+      } else if (isDownloadAllDesa && selectedCities.length >= 1) {
+        selectedCities.forEach(cityId => {
+          const kabNum = Number(cityId);
+          const allKecForCity = kecamatanData[cityId] || [];
+          allKecForCity.forEach(kec => {
+            const kecName = (kec.split(' - ')[1] || '').trim();
+            const desaForKec = [];
+            if (Array.isArray(wilayahData)) {
+              wilayahData.forEach(entry => {
+                const kodeKabObj = entry['KODE KABUPATEN'];
+                const kodeKab = kodeKabObj && typeof kodeKabObj === 'object' ? Object.values(kodeKabObj)[0] : kodeKabObj;
+                const namaKec = (entry['NAMA KECAMATAN'] || '').toString().trim();
+                if (Number(kodeKab) === kabNum && namaKec.toLowerCase() === kecName.toLowerCase()) {
+                  desaForKec.push(`${entry['KODE DESA']} - ${entry['NAMA DESA']}`);
+                }
+              });
+            }
+            if (desaForKec.length > 0) {
+              urls.forEach(url => {
+                desaForKec.forEach(desaStr => {
+                  if (tabName === 'tahunan') {
+                    queue.push({ kota: cityNameMap[cityId], url, kecamatan: kec, desa: desaStr, kabCode: cityId });
+                  } else {
+                    queue.push({ kota: cityNameMap[cityId], url, kecamatan: kec, faskes: desaStr, kabCode: cityId });
+                  }
+                });
+              });
+            }
+          });
+        });
+      } else if (selectedCities.length > 1) {
         // Banyak kab/kota: setiap kab/kota x url = tab terpisah
         selectedCities.forEach(cityId => {
           urls.forEach(url => {
@@ -1250,16 +1973,137 @@ function setupFormSubmit(formId, tabName) {
         }
       }
 
-      // Tambahkan sasaran/catin/baduta/bumil/pascapersalin untuk setiap URL jika tersedia dari URL
-      queue = queue.map(item => ({
-        ...item,
-        sasaran: item.sasaran || detectSasaranFromUrl(item.url)
-      }));
+      // Tambahkan sasaran/catin/baduta/bumil/pascapersalin dan renameContext untuk setiap item
+      queue = queue.map(item => {
+        const sasaran = item.sasaran || detectSasaranFromUrl(item.url);
+        const itemKabCode = item.kabCode || extractNumericCode(item.kota || '') || (selectedCities.length === 1 ? selectedCities[0] : '');
+        const itemKecamatan = item.kecamatan || kecamatan;
+        const kecCode = extractNumericCode(itemKecamatan);
+        const desaCode = extractNumericCode(item.desa || '');
+
+        let payload = {
+          menu: activeMenuId,
+          submenu: activeSubmenuId,
+          periode,
+          kab: (item.kota || '').toString().replace(/^\d+\s*-\s*/, '').trim(),
+          kotaAsli: item.kota || '',
+          kabCode: itemKabCode,
+          kec: itemKecamatan,
+          kecCode,
+          jenisLaporan,
+          desaCode,
+          sasaran: sasaran,
+          folderMode: document.querySelector(`input[name="folder-mode-${tabName}"]:checked`)?.value || 'kab',
+          tabelName: (urlTableData[tabName] && urlTableData[tabName][activeSubmenuId] && urlTableData[tabName][activeSubmenuId].find(e => e.url === item.url)) ? urlTableData[tabName][activeSubmenuId].find(e => e.url === item.url).nama : '',
+          isBatchKabupaten: queue.length > 1 && (document.querySelector(`input[name="folder-mode-${tabName}"]:checked`)?.value === 'kab' || document.querySelector(`input[name="folder-mode-${tabName}"]:checked`)?.value === undefined)
+        };
+
+        if (tabName === 'bulanan') {
+          payload.tahun = document.getElementById('tahun').value;
+          payload.faskes = item.faskes || '';
+        } else {
+          payload.desa = item.desa || '';
+          payload.rw = document.getElementById('rw-tahunan').value;
+        }
+
+        return {
+          ...item,
+          sasaran,
+          renameContext: payload
+        };
+      });
 
       // Jika mode banyak desa/faskes, kirim ke background satu per tab (bukan satu queue besar)
       // DEBUG LOG: tampilkan queue sebelum dikirim ke background
       console.log('[DEBUG][popup] Queue to background:', queue);
-      if ((selectedCities.length === 1 && (selectedKecamatan.length > 1 || hasDesaSelected)) || selectedCities.length > 1) {
+
+      if ((selectedCities.length === 1 && (selectedKecamatan.length > 1 || hasDesaSelected || isDownloadAllKecamatan || isDownloadAllDesa)) || selectedCities.length > 1) {
+        // Cek mode eksekusi
+        const modeEksekusi = document.getElementById(`mode-eksekusi-${tabName}`)?.value || 'batch';
+        const batchSize = parseInt(document.getElementById(`batch-size-${tabName}`)?.value || '10', 10);
+
+        if (modeEksekusi === 'batch') {
+          console.log('[DEBUG][popup] Menggunakan mode Batch dengan ukuran:', batchSize);
+          resetDownloadProgress(() => {
+            switchToDownloadTab();
+            initializeDownloadProgress(queue).then(keys => {
+              const fullBatchQueue = [];
+              queue.forEach((item, idx) => {
+                const itemKabCode = item.kabCode || extractNumericCode(item.kota || '') || (selectedCities.length === 1 ? selectedCities[0] : '');
+                const itemKecamatan = item.kecamatan || kecamatan;
+                const kecCode = extractNumericCode(itemKecamatan);
+                const desaCode = extractNumericCode(item.desa || '');
+
+                const dataSingle = {
+                  tab: tabName,
+                  submenu: activeSubmenuId,
+                  periode,
+                  kecamatan: itemKecamatan,
+                  jenisLaporan,
+                  selectedCities,
+                  downloadQueue: [item],
+                  urls,
+                  progressKey: keys[idx],
+                  openDelay: openDelaySec
+                };
+
+                let payload = {
+                  menu: activeMenuId,
+                  submenu: activeSubmenuId,
+                  periode,
+                  kab: (item.kota || '').toString().replace(/^\d+\s*-\s*/, '').trim(),
+                  kotaAsli: item.kota || '',
+                  kabCode: itemKabCode,
+                  kec: itemKecamatan,
+                  kecCode,
+                  jenisLaporan,
+                  desaCode,
+                  sasaran: item.sasaran || detectSasaranFromUrl(item.url),
+                  folderMode: document.querySelector(`input[name="folder-mode-${tabName}"]:checked`)?.value || 'kab',
+                  tabelName: (urlTableData[tabName] && urlTableData[tabName][activeSubmenuId] && urlTableData[tabName][activeSubmenuId].find(e => e.url === item.url)) ? urlTableData[tabName][activeSubmenuId].find(e => e.url === item.url).nama : '',
+                  isBatchKabupaten: queue.length > 1 && (document.querySelector(`input[name="folder-mode-${tabName}"]:checked`)?.value === 'kab' || document.querySelector(`input[name="folder-mode-${tabName}"]:checked`)?.value === undefined)
+                };
+
+                if (tabName === 'bulanan') {
+                  dataSingle.faskes = item.faskes || '';
+                  dataSingle.tahun = document.getElementById('tahun').value;
+                  payload.tahun = dataSingle.tahun;
+                  payload.faskes = item.faskes || '';
+                  payload.sasaran = item.sasaran || detectSasaranFromUrl(item.url) || '';
+                } else {
+                  dataSingle.desa = item.desa || '';
+                  dataSingle.rw = document.getElementById('rw-tahunan').value;
+                  dataSingle.sasaran = document.getElementById('sasaran-tahunan').value;
+                  payload.desa = item.desa || '';
+                  payload.rw = dataSingle.rw;
+                  payload.sasaran = dataSingle.sasaran || item.sasaran || detectSasaranFromUrl(item.url) || '';
+                }
+
+                // Pass the renameContext directly inside the downloadQueue item
+                dataSingle.downloadQueue[0].renameContext = payload;
+                saveRetryState(keys[idx], dataSingle);
+                fullBatchQueue.push(dataSingle);
+              });
+
+              chrome.runtime.sendMessage({
+                action: 'startBatchDownload',
+                batchQueue: fullBatchQueue,
+                batchSize: batchSize
+              }, (response) => {
+                if (response && response.success) {
+                  console.log('Proses download batch dimulai...');
+                } else {
+                  alert('Proses gagal atau tidak ada response.');
+                }
+              });
+            }).catch(err => {
+              console.error('Gagal inisialisasi progress keys:', err);
+            });
+          });
+          return;
+        }
+
+        // Mode Paralel (Lama)
         // Setiap item queue = 1 tab
         resetDownloadProgress(() => {
           switchToDownloadTab();
@@ -1281,19 +2125,24 @@ function setupFormSubmit(formId, tabName) {
                 jenisLaporan,
                 selectedCities,
                 downloadQueue: singleQueue,
-                urls
+                urls,
+                openDelay: openDelaySec
               };
               let payload = {
                 menu: activeMenuId,
                 submenu: activeSubmenuId,
                 periode,
                 kab: (item.kota || '').toString().replace(/^\d+\s*-\s*/, '').trim(),
+                kotaAsli: item.kota || '',
                 kabCode: itemKabCode,
                 kec: itemKecamatan,
                 kecCode,
                 jenisLaporan,
                 desaCode,
-                sasaran: item.sasaran || detectSasaranFromUrl(item.url)
+                sasaran: item.sasaran || detectSasaranFromUrl(item.url),
+                folderMode: document.querySelector(`input[name="folder-mode-${tabName}"]:checked`)?.value || 'kab',
+                tabelName: (urlTableData[tabName] && urlTableData[tabName][activeSubmenuId] && urlTableData[tabName][activeSubmenuId].find(e => e.url === item.url)) ? urlTableData[tabName][activeSubmenuId].find(e => e.url === item.url).nama : '',
+                isBatchKabupaten: queue.length > 1 && (document.querySelector(`input[name="folder-mode-${tabName}"]:checked`)?.value === 'kab' || document.querySelector(`input[name="folder-mode-${tabName}"]:checked`)?.value === undefined)
               };
               if (tabName === 'bulanan') {
                 dataSingle.faskes = item.faskes || '';
@@ -1311,6 +2160,8 @@ function setupFormSubmit(formId, tabName) {
               }
               // attach the generated progress key so the content script can update the correct entry
               dataSingle.progressKey = keys[idx];
+              dataSingle.downloadQueue[0].renameContext = payload;
+              saveRetryState(keys[idx], dataSingle);
               chrome.runtime.sendMessage({ action: "setRenameContext", payload });
               chrome.runtime.sendMessage({ action: 'processData', data: dataSingle }, (response) => {
                 if (response && response.success) {
@@ -1338,7 +2189,8 @@ function setupFormSubmit(formId, tabName) {
         jenisLaporan,
         selectedCities,
         downloadQueue: queue,
-        urls
+        urls,
+        openDelay: openDelaySec
       };
       if (tabName === 'bulanan') {
         data.faskes = hasDesaSelected ? '' : document.getElementById('faskes-bulanan')?.value || '';
@@ -1359,80 +2211,109 @@ function setupFormSubmit(formId, tabName) {
         const ok = confirm(`Anda akan mendownload ${itemList.length} item. Contoh:\n\n${preview}${itemList.length > 10 ? '\n...' : ''}\n\nLanjutkan?`);
         if (!ok) return;
       }
+      // Mode eksekusi
+      const modeEksekusi = document.getElementById(`mode-eksekusi-${tabName}`)?.value || 'batch';
+      const batchSize = parseInt(document.getElementById(`batch-size-${tabName}`)?.value || '10', 10);
+
       // Reset progress lama dan pindah ke tab Download
       resetDownloadProgress(() => {
         switchToDownloadTab();
 
         // Inisialisasi progress awal per URL dengan 0% dan file pertama
-        initializeDownloadProgress(queue);
+        initializeDownloadProgress(queue).then(keys => {
+          // mapping id -> nama kab
+          const cityNameMap = {};
+          cities.forEach(city => { cityNameMap[city.id] = city.name; });
 
+          // ambil kab terpilih (kalau 1 saja)
+          const checked = document.querySelectorAll(`#cities-${tabName} input[type="checkbox"]:checked`);
+          const selectedCityIds = Array.from(checked).map(cb => cb.value);
 
-        // mapping id -> nama kab
-        const cityNameMap = {};
-        cities.forEach(city => { cityNameMap[city.id] = city.name; });
+          let kab = '';
+          if (selectedCityIds.length === 1) {
+            kab = cityNameMap[selectedCityIds[0]];
+            // Remove code prefix
+            kab = kab.replace(/^\d+\s*-\s*/, '').trim();
+          } else if (selectedCityIds.length > 1) {
+            // Gabungkan semua nama kabupaten, tanpa kode
+            kab = selectedCityIds.map(id => cityNameMap[id].replace(/^\d+\s*-\s*/, '').trim()).join(', ');
+          } else {
+            kab = 'PROVINSI';
+          }
 
-        // ambil kab terpilih (kalau 1 saja)
-        const checked = document.querySelectorAll(`#cities-${tabName} input[type="checkbox"]:checked`);
-        const selectedCityIds = Array.from(checked).map(cb => cb.value);
+          const kabCode = selectedCityIds.length === 1 ? selectedCityIds[0] : '';
+          const kecValue = document.getElementById(`kecamatan-${tabName}`).value;
+          const kecCode = extractNumericCode(kecValue);
+          const desaValue = data.desa || '';
+          const desaCode = extractNumericCode(desaValue);
 
+          const defaultSasaran = data.sasaran || (queue[0] && queue[0].sasaran) || detectSasaranFromUrl((queue[0] && queue[0].url) || '') || '';
 
-        let kab = '';
-        if (selectedCityIds.length === 1) {
-          kab = cityNameMap[selectedCityIds[0]];
-          // Remove code prefix
-          kab = kab.replace(/^\d+\s*-\s*/, '').trim();
-        } else if (selectedCityIds.length > 1) {
-          // Gabungkan semua nama kabupaten, tanpa kode
-          kab = selectedCityIds.map(id => cityNameMap[id].replace(/^\d+\s*-\s*/, '').trim()).join(', ');
-        } else {
-          kab = 'PROVINSI';
-        }
+          const payload = {
+            menu: activeMenuId,
+            submenu: activeSubmenuId,
+            periode: document.getElementById(`periode-${tabName}`).value,
+            kab: kab,
+            kabCode: kabCode,
+            kec: kecValue,
+            kecCode,
+            jenisLaporan,
+            desa: data.desa,
+            desaCode,
+            sasaran: defaultSasaran
+          };
 
-        const kabCode = selectedCityIds.length === 1 ? selectedCityIds[0] : '';
-        const kecValue = document.getElementById(`kecamatan-${tabName}`).value;
-        const kecCode = extractNumericCode(kecValue);
-        const desaValue = data.desa || '';
-        const desaCode = extractNumericCode(desaValue);
+          data.sasaran = defaultSasaran;
 
-        const defaultSasaran = data.sasaran || (queue[0] && queue[0].sasaran) || detectSasaranFromUrl((queue[0] && queue[0].url) || '') || '';
+          if (tabName === "bulanan") {
+            payload.tahun = document.getElementById("tahun")?.value; // ambil input tahun bulanan
+            payload.faskes = data.faskes;
+          } else {
+            payload.desa = data.desa;
+            payload.rw = data.rw;
+          }
 
-        const payload = {
-          menu: activeMenuId,
-          submenu: activeSubmenuId,
-          periode: document.getElementById(`periode-${tabName}`).value,
-          kab: kab,
-          kabCode: kabCode,
-          kec: kecValue,
-          kecCode,
-          jenisLaporan,
-          desa: data.desa,
-          desaCode,
-          sasaran: defaultSasaran
-        };
+          if (modeEksekusi === 'batch') {
+            console.log('[DEBUG][popup] Menggunakan mode Batch dengan ukuran:', batchSize, 'untuk tabel');
+            const fullBatchQueue = [];
+            queue.forEach((item, idx) => {
+              const dataSingle = { ...data, downloadQueue: [item], progressKey: keys[idx] };
+              dataSingle.downloadQueue[0].renameContext = payload;
+              saveRetryState(keys[idx], dataSingle);
+              fullBatchQueue.push(dataSingle);
+            });
 
-        data.sasaran = defaultSasaran;
-
-        if (tabName === "bulanan") {
-          payload.tahun = document.getElementById("tahun")?.value; // ambil input tahun bulanan
-          payload.faskes = data.faskes;
-        } else {
-          payload.desa = data.desa;
-          payload.rw = data.rw;
-        }
-
-        chrome.runtime.sendMessage({ action: "setRenameContext", payload });
-
-        // Kirim pesan ke background untuk mulai proses
-        chrome.runtime.sendMessage({ action: 'processData', data },
-          (response) => {
-            if (response && response.success) {
-              console.log('Proses download dimulai...');
-            } else {
-              alert('Proses gagal atau tidak ada response.');
-            }
-          });
+            chrome.runtime.sendMessage({
+              action: 'startBatchDownload',
+              batchQueue: fullBatchQueue,
+              batchSize: batchSize
+            }, (response) => {
+              if (response && response.success) {
+                console.log('Proses download batch dimulai...');
+              } else {
+                alert('Proses gagal atau tidak ada response.');
+              }
+            });
+          } else {
+            // Mode Paralel (Lama)
+            queue.forEach((item, idx) => {
+              const dataSingle = { ...data, downloadQueue: [item], progressKey: keys[idx] };
+              dataSingle.downloadQueue[0].renameContext = payload;
+              saveRetryState(keys[idx], dataSingle);
+            });
+            chrome.runtime.sendMessage({ action: "setRenameContext", payload });
+            chrome.runtime.sendMessage({ action: 'processData', data }, (response) => {
+              if (response && response.success) {
+                console.log('Proses download dimulai...');
+              } else {
+                alert('Proses gagal atau tidak ada response.');
+              }
+            });
+          }
+        }).catch(err => {
+          console.error('Gagal inisialisasi progress keys:', err);
+        });
       });
-
     } catch (error) {
       console.error('Error saat memproses form:', error);
       alert(`❌ Terjadi kesalahan: ${error.message}\n\nSilakan cek console untuk detail lebih lanjut.`);
@@ -1516,11 +2397,11 @@ const fieldVisibilityConfig = {
   },
   'krs-keluarga': {
     hideTabs: ['tahunan'],
-    bulanan: { hide: ['jenis-laporan-bulanan'] }
+    bulanan: { hide: [] }
   },
   'monitoring-krs': {
     hideTabs: ['tahunan'],
-    bulanan: { hide: ['jenis-laporan-bulanan'] }
+    bulanan: { hide: [] }
   },
   'catin': {
     hideTabs: ['tahunan'],
@@ -1913,16 +2794,18 @@ document.getElementById('back-to-submenu').addEventListener('click', () => {
   });
 });
 
-// Toggle close-delay panel
+// Toggle close-delay & open-delay panels
 ['tahunan', 'bulanan'].forEach(tab => {
-  const toggle = document.getElementById(`enable-close-delay-${tab}`);
-  const panel = document.getElementById(`close-delay-panel-${tab}`);
-  if (toggle && panel) {
-    toggle.addEventListener('change', () => {
-      panel.style.display = toggle.checked ? 'block' : 'none';
-      saveUserPrefs();
-    });
-  }
+  ['close-delay', 'open-delay'].forEach(prefix => {
+    const toggle = document.getElementById(`enable-${prefix}-${tab}`);
+    const panel = document.getElementById(`${prefix}-panel-${tab}`);
+    if (toggle && panel) {
+      toggle.addEventListener('change', () => {
+        panel.style.display = toggle.checked ? 'block' : 'none';
+        saveUserPrefs();
+      });
+    }
+  });
 });
 
 // ──────────────────────────────────────────────────────────
@@ -1940,7 +2823,10 @@ function saveUserPrefs() {
     activeTab: document.querySelector('.tab-button.active')?.getAttribute('data-tab') || 'tahunan',
     monitoringTarget: document.getElementById('monitoring-target')?.value || '#/kegiatan/kelompok_bkb',
     monitoringInitialWait: document.getElementById('monitoring-initial-wait')?.value || '30',
-    monitoringLoopWait: document.getElementById('monitoring-loop-wait')?.value || '8'
+    monitoringLoopWait: document.getElementById('monitoring-loop-wait')?.value || '8',
+    monitoringParallelLimit: document.getElementById('monitoring-parallel-limit')?.value || '3',
+    monitoringMode: document.querySelector('input[name="monitoring-mode"]:checked')?.value || 'provinsi',
+    monitoringKab: document.getElementById('monitoring-kab')?.value || ''
   };
   ['tahunan', 'bulanan'].forEach(tab => {
     prefs[`cities_${tab}`] = Array.from(
@@ -1956,21 +2842,22 @@ function saveUserPrefs() {
       document.querySelectorAll(`#desa-checkboxes-${tab} input[type="checkbox"]:checked`)
     ).map(cb => cb.value);
     const fieldIds = tab === 'tahunan'
-      ? ['periode-tahunan', 'rw-tahunan', 'sasaran-tahunan', 'jenis-laporan-tahunan', 'close-delay-tahunan']
-      : ['tahun', 'jenis-laporan-bulanan', 'close-delay-bulanan'];
+      ? ['periode-tahunan', 'rw-tahunan', 'sasaran-tahunan', 'jenis-laporan-tahunan', 'close-delay-tahunan', 'open-delay-tahunan']
+      : ['tahun', 'jenis-laporan-bulanan', 'close-delay-bulanan', 'open-delay-bulanan'];
     fieldIds.forEach(id => {
       const el = document.getElementById(id);
       if (el) prefs[id] = el.value;
     });
     const cbOptionIds = tab === 'tahunan'
-      ? ['enable-close-delay-tahunan']
-      : ['enable-close-delay-bulanan'];
+      ? ['enable-close-delay-tahunan', 'enable-open-delay-tahunan', 'download-all-kec-tahunan', 'download-all-desa-tahunan']
+      : ['enable-close-delay-bulanan', 'enable-open-delay-bulanan', 'download-all-kec-bulanan', 'download-all-desa-bulanan'];
     cbOptionIds.forEach(id => {
       const el = document.getElementById(id);
       if (el) prefs[id] = el.checked;
     });
+    prefs[`folder_mode_${tab}`] = document.querySelector(`input[name="folder-mode-${tab}"]:checked`)?.value || 'kab';
   });
-  // Simpan closeDelay sebagai key terpisah agar bisa dibaca content.js
+  // Simpan closeDelay & openDelay sebagai key terpisah agar bisa dibaca content.js
   const activeCloseDelay = (() => {
     const activeTab = prefs.activeTab || 'tahunan';
     const enableId = activeTab === 'bulanan' ? 'enable-close-delay-bulanan' : 'enable-close-delay-tahunan';
@@ -1980,7 +2867,16 @@ function saveUserPrefs() {
     const el = document.getElementById(delayId);
     return el ? parseInt(el.value, 10) || 10 : 10;
   })();
-  chrome.storage.local.set({ [PREFS_KEY]: prefs, closeDelay: activeCloseDelay });
+  const activeOpenDelay = (() => {
+    const activeTab = prefs.activeTab || 'tahunan';
+    const enableId = activeTab === 'bulanan' ? 'enable-open-delay-bulanan' : 'enable-open-delay-tahunan';
+    const delayId = activeTab === 'bulanan' ? 'open-delay-bulanan' : 'open-delay-tahunan';
+    const enabled = document.getElementById(enableId)?.checked;
+    if (enabled === false) return 0;
+    const el = document.getElementById(delayId);
+    return el ? parseInt(el.value, 10) || 5 : 5;
+  })();
+  chrome.storage.local.set({ [PREFS_KEY]: prefs, closeDelay: activeCloseDelay, openDelay: activeOpenDelay });
 }
 
 function restoreUserPrefs() {
@@ -1992,33 +2888,67 @@ function restoreUserPrefs() {
     const monitoringTargetEl = document.getElementById('monitoring-target');
     const monitoringInitialEl = document.getElementById('monitoring-initial-wait');
     const monitoringLoopEl = document.getElementById('monitoring-loop-wait');
+    const monitoringParallelEl = document.getElementById('monitoring-parallel-limit');
     if (monitoringTargetEl && prefs.monitoringTarget) monitoringTargetEl.value = prefs.monitoringTarget;
     if (monitoringInitialEl && prefs.monitoringInitialWait) monitoringInitialEl.value = prefs.monitoringInitialWait;
     if (monitoringLoopEl && prefs.monitoringLoopWait) monitoringLoopEl.value = prefs.monitoringLoopWait;
+    if (monitoringParallelEl && prefs.monitoringParallelLimit) monitoringParallelEl.value = prefs.monitoringParallelLimit;
+
+
+    // Restore mode monitoring (provinsi / kecamatan)
+    if (prefs.monitoringMode) {
+      const modeRadio = document.querySelector(`input[name="monitoring-mode"][value="${prefs.monitoringMode}"]`);
+      if (modeRadio) {
+        modeRadio.checked = true;
+        // trigger visibility toggle
+        const kabGroup = document.getElementById('monitoring-kab-group');
+        if (kabGroup) kabGroup.style.display = prefs.monitoringMode === 'kecamatan' ? 'block' : 'none';
+      }
+    }
+    // Restore kabupaten terpilih
+    const kabSelectEl = document.getElementById('monitoring-kab');
+    if (kabSelectEl && prefs.monitoringKab) {
+      kabSelectEl.value = prefs.monitoringKab;
+      // update info kec count
+      const kecInfoEl = document.getElementById('monitoring-kec-info');
+      if (kecInfoEl) {
+        const count = (kecamatanData[prefs.monitoringKab] || []).length;
+        kecInfoEl.textContent = count > 0
+          ? `✔ ${count} kecamatan akan dimonitor`
+          : '⚠ Data kecamatan tidak tersedia';
+        kecInfoEl.style.color = count > 0 ? '#2a7a2a' : '#a00';
+      }
+    }
 
     // Restore simple fields & checkboxes untuk kedua tab
     ['tahunan', 'bulanan'].forEach(tab => {
       const fieldIds = tab === 'tahunan'
-        ? ['periode-tahunan', 'rw-tahunan', 'sasaran-tahunan', 'jenis-laporan-tahunan', 'close-delay-tahunan']
-        : ['tahun', 'jenis-laporan-bulanan', 'close-delay-bulanan'];
+        ? ['periode-tahunan', 'rw-tahunan', 'sasaran-tahunan', 'jenis-laporan-tahunan', 'close-delay-tahunan', 'open-delay-tahunan']
+        : ['tahun', 'jenis-laporan-bulanan', 'close-delay-bulanan', 'open-delay-bulanan'];
       fieldIds.forEach(id => {
         const el = document.getElementById(id);
         if (el && prefs[id] !== undefined) el.value = prefs[id];
       });
       const cbOptionIds = tab === 'tahunan'
-        ? ['enable-close-delay-tahunan']
-        : ['enable-close-delay-bulanan'];
+        ? ['enable-close-delay-tahunan', 'enable-open-delay-tahunan', 'download-all-kec-tahunan', 'download-all-desa-tahunan']
+        : ['enable-close-delay-bulanan', 'enable-open-delay-bulanan', 'download-all-kec-bulanan', 'download-all-desa-bulanan'];
       cbOptionIds.forEach(id => {
         const el = document.getElementById(id);
         if (el && prefs[id] !== undefined) {
           el.checked = prefs[id];
-          if (id.startsWith('enable-close-delay-')) {
-            const t = id.replace('enable-close-delay-', '');
-            const panel = document.getElementById(`close-delay-panel-${t}`);
+          if (id.startsWith('enable-close-delay-') || id.startsWith('enable-open-delay-')) {
+            const isClose = id.startsWith('enable-close-delay-');
+            const prefix = isClose ? 'close-delay' : 'open-delay';
+            const t = id.replace(`enable-${prefix}-`, '');
+            const panel = document.getElementById(`${prefix}-panel-${t}`);
             if (panel) panel.style.display = prefs[id] ? 'block' : 'none';
           }
         }
       });
+      if (prefs[`folder_mode_${tab}`]) {
+        const rb = document.querySelector(`input[name="folder-mode-${tab}"][value="${prefs[`folder_mode_${tab}`]}"]`);
+        if (rb) rb.checked = true;
+      }
       // Restore kab/kota
       if (prefs[`cities_${tab}`]?.length) {
         prefs[`cities_${tab}`].forEach(val => {
@@ -2026,6 +2956,7 @@ function restoreUserPrefs() {
           if (cb) cb.checked = true;
         });
         updateKecamatanDropdown(tab);
+        handleDisableInputs(tab);
       }
     });
 
@@ -2085,34 +3016,70 @@ function restoreUserPrefs() {
       const targetContent = document.getElementById(`${prefs.activeTab}-content`);
       if (targetBtn) targetBtn.classList.add('active');
       if (targetContent) targetContent.classList.add('active');
+      // Render progress jika tab Download yang di-restore
+      if (prefs.activeTab === 'download') renderDownloadTab();
     }
 
     // Restore kecamatan & tabel (perlu delay karena dirender async)
     setTimeout(() => {
       ['tahunan', 'bulanan'].forEach(tab => {
+        // Step 1: Restore kecamatan checkboxes
         if (prefs[`kecamatan_${tab}`]?.length) {
           document.querySelectorAll(`#kecamatan-checkboxes-${tab} input[type="checkbox"]`).forEach(cb => {
             if (prefs[`kecamatan_${tab}`].includes(cb.value)) cb.checked = true;
           });
           const kecInput = document.getElementById(`kecamatan-${tab}`);
           if (kecInput) kecInput.value = prefs[`kecamatan_${tab}`][0] || '';
+
+          // Step 2: Render desa/faskes list berdasarkan kecamatan yang baru di-restore
+          // (wajib dilakukan sebelum bisa restore pilihan desa)
+          renderListDesaFaskes(tab);
         }
+
+        // Restore tabel checkboxes
         if (prefs[`tabel_${tab}`]?.length) {
           document.querySelectorAll(`#tabel-checkboxes-${tab} input[type="checkbox"]`).forEach(cb => {
             if (prefs[`tabel_${tab}`].includes(cb.value)) cb.checked = true;
           });
           syncTabelToUrl(tab);
         }
-        if (prefs[`desa_${tab}`]?.length) {
-          document.querySelectorAll(`#desa-checkboxes-${tab} input[type="checkbox"]`).forEach(cb => {
-            if (prefs[`desa_${tab}`].includes(cb.value)) cb.checked = true;
-          });
-          syncDesaToUrl(tab);
-        }
       });
+
+      // Step 3: Restore pilihan desa/faskes SETELAH renderListDesaFaskes selesai render DOM
+      setTimeout(() => {
+        ['tahunan', 'bulanan'].forEach(tab => {
+          if (prefs[`desa_${tab}`]?.length) {
+            let restoredCount = 0;
+            document.querySelectorAll(`#desa-checkboxes-${tab} input[type="checkbox"]`).forEach(cb => {
+              if (prefs[`desa_${tab}`].includes(cb.value)) {
+                cb.checked = true;
+                restoredCount++;
+              }
+            });
+            if (restoredCount > 0) syncDesaToUrl(tab);
+          }
+        });
+      }, 50);
     }, 100);
   });
 }
+
+// Event listener untuk mode eksekusi Batch/Paralel
+['tahunan', 'bulanan'].forEach(tab => {
+  const modeSelect = document.getElementById(`mode-eksekusi-${tab}`);
+  const batchPanel = document.getElementById(`batch-size-panel-${tab}`);
+  if (modeSelect && batchPanel) {
+    modeSelect.addEventListener('change', (e) => {
+      if (e.target.value === 'batch') {
+        batchPanel.style.display = 'block';
+      } else {
+        batchPanel.style.display = 'none';
+      }
+    });
+    // Trigger on load
+    modeSelect.dispatchEvent(new Event('change'));
+  }
+});
 
 // On load: show menu screen
 showScreen(menuScreen);

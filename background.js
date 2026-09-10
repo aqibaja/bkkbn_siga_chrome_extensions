@@ -1,6 +1,6 @@
 // background.js (MV3 service worker)
 
-const ALLOWED_HOST = "newsiga-siga.bkkbn.go.id";
+const ALLOWED_HOST = "newsiga-siga.kemendukbangga.go.id";
 
 function getHostSafe(url) {
     try {
@@ -23,6 +23,7 @@ function sanitize(s) {
 
 // Helper: antrian rename context (untuk multi-download supaya tidak saling overwrite)
 let enqueuePromise = Promise.resolve();
+
 function enqueueRenameContext(payload) {
     const ctx = payload || {};
     enqueuePromise = enqueuePromise.then(() => {
@@ -78,6 +79,138 @@ function dequeuePendingRename(callback) {
 // =========================
 // Message handler (satu saja)
 // =========================
+let isWakingUp = false;
+let wakeUpQueue = [];
+
+// =========================
+// Batch Automation State
+// =========================
+let batchAutomationState = {
+    active: false,
+    queue: [],
+    batchSize: 10,
+    currentBatchTabs: {}, // tabId -> progressKey
+};
+
+function processNextBatch() {
+    if (!batchAutomationState.active) return;
+
+    const currentActiveCount = Object.keys(batchAutomationState.currentBatchTabs).length;
+
+    if (batchAutomationState.queue.length === 0 && currentActiveCount === 0) {
+        batchAutomationState.active = false;
+        console.log('[batch] All batches completed!');
+        return;
+    }
+
+    const availableSlots = batchAutomationState.batchSize - currentActiveCount;
+    if (availableSlots <= 0) {
+        return; // wait for them to finish
+    }
+
+    const nextBatch = batchAutomationState.queue.splice(0, availableSlots);
+    if (nextBatch.length === 0) return;
+
+    console.log(`[batch] Starting new batch of ${nextBatch.length} items. Active: ${currentActiveCount}/${batchAutomationState.batchSize}`);
+    
+    nextBatch.forEach((data, index) => {
+        const item = data.downloadQueue[0];
+        const url = item.url;
+        
+        const pendingId = `pending_${Date.now()}_${Math.random()}`;
+        batchAutomationState.currentBatchTabs[pendingId] = data.progressKey;
+        
+        setTimeout(() => {
+            chrome.tabs.create({ url, active: false }, (tabObj) => {
+                delete batchAutomationState.currentBatchTabs[pendingId];
+                if (tabObj && tabObj.id) {
+                    batchAutomationState.currentBatchTabs[tabObj.id] = data.progressKey;
+                    chrome.storage.local.set({
+                        [`auto_${tabObj.id}`]: {
+                            downloadQueue: data.downloadQueue,
+                            currentIndex: 0,
+                            periode: data.periode, 
+                            selectedCities: data.selectedCities, 
+                            kecamatan: data.kecamatan, 
+                            jenisLaporan: data.jenisLaporan, 
+                            faskes: data.faskes, 
+                            tahun: data.tahun, 
+                            desa: data.desa, 
+                            rw: data.rw, 
+                            sasaran: data.sasaran,
+                            menu: data.menu || '',
+                            submenu: data.submenu || '',
+                            cancelled: false,
+                            progressKey: data.progressKey,
+                            openDelay: data.openDelay
+                        },
+                    });
+                } else {
+                    checkBatchCompletion();
+                }
+            });
+        }, index * 1500);
+    });
+}
+
+function checkBatchCompletion() {
+    if (!batchAutomationState.active) return;
+    
+    const remainingTabIds = Object.keys(batchAutomationState.currentBatchTabs);
+    const realTabIds = remainingTabIds.filter(id => !id.startsWith('pending_'));
+    const keysToCheck = realTabIds.map(id => batchAutomationState.currentBatchTabs[id]);
+    
+    if (keysToCheck.length === 0) {
+        processNextBatch();
+        return;
+    }
+    
+    chrome.storage.local.get(keysToCheck, (res) => {
+        let clearedSome = false;
+        realTabIds.forEach(tabId => {
+            const pk = batchAutomationState.currentBatchTabs[tabId];
+            const item = res[pk];
+            if (item && (item.status === 'success' || item.status === 'fail' || item.status === 'cancelled')) {
+                delete batchAutomationState.currentBatchTabs[tabId];
+                clearedSome = true;
+            }
+        });
+        
+        processNextBatch();
+    });
+}
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName === 'local' && batchAutomationState.active) {
+        // If any of the changes involve our batch progress keys, check completion
+        const remainingTabIds = Object.keys(batchAutomationState.currentBatchTabs);
+        const activeKeys = remainingTabIds.map(id => batchAutomationState.currentBatchTabs[id]);
+        
+        const hasRelevantChange = Object.keys(changes).some(k => activeKeys.includes(k));
+        if (hasRelevantChange) {
+            checkBatchCompletion();
+        }
+    }
+});
+
+async function processWakeUpQueue() {
+    if (isWakingUp || wakeUpQueue.length === 0) return;
+    isWakingUp = true;
+    
+    const tabId = wakeUpQueue.shift();
+    try {
+        // Pindah tab agar tab yang freeze bisa merender (anti-sleep fallback)
+        await chrome.tabs.update(tabId, { active: true });
+        // Biarkan tab aktif selama 800ms agar React sempat menggambar dropdown
+        await new Promise(r => setTimeout(r, 800));
+    } catch(e) {}
+    
+    isWakingUp = false;
+    if (wakeUpQueue.length > 0) {
+        processWakeUpQueue();
+    }
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // 1) Simpan context rename dari popup
     if (message.action === "setRenameContext") {
@@ -85,6 +218,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         enqueueRenameContext(message.payload || {});
         sendResponse({ ok: true });
         return true;
+    }
+
+    // 1.5) Anti-Sleep / Auto Pindah Tab
+    if (message.action === "wakeMeUp" && sender.tab) {
+        if (!wakeUpQueue.includes(sender.tab.id)) {
+            wakeUpQueue.push(sender.tab.id);
+            processWakeUpQueue();
+        }
+        sendResponse({ ok: true });
+        return;
     }
 
     // 2) Start automation
@@ -98,24 +241,43 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             urlToQueueMap[item.url].push(item);
         });
 
-        Object.keys(urlToQueueMap).forEach((url) => {
-            chrome.tabs.create({ url, active: false }, (tabObj) => {
-                // If caller provided a progressKey for each item, preserve it into auto_<tabId>
-                const dataForThisUrl = message.data;
-                const progressKey = dataForThisUrl && dataForThisUrl.progressKey ? dataForThisUrl.progressKey : null;
-                chrome.storage.local.set({
-                    [`auto_${tabObj.id}`]: {
-                        downloadQueue: urlToQueueMap[url],
-                        currentIndex: 0,
-                        periode, selectedCities, kecamatan, jenisLaporan, faskes, tahun, desa, rw, sasaran,
-                        menu: message.data.menu || '',
-                        submenu: message.data.submenu || '',
-                        cancelled: false,
-                        progressKey
-                    },
+        Object.keys(urlToQueueMap).forEach((url, index) => {
+            setTimeout(() => {
+                chrome.tabs.create({ url, active: false }, (tabObj) => {
+                    // If caller provided a progressKey for each item, preserve it into auto_<tabId>
+                    const dataForThisUrl = message.data;
+                    const progressKey = dataForThisUrl && dataForThisUrl.progressKey ? dataForThisUrl.progressKey : null;
+                    chrome.storage.local.set({
+                        [`auto_${tabObj.id}`]: {
+                            downloadQueue: urlToQueueMap[url],
+                            currentIndex: 0,
+                            periode, selectedCities, kecamatan, jenisLaporan, faskes, tahun, desa, rw, sasaran,
+                            menu: message.data.menu || '',
+                            submenu: message.data.submenu || '',
+                            cancelled: false,
+                            progressKey,
+                            openDelay: message.data.openDelay
+                        },
+                    });
                 });
-            });
+            }, index * 1500);
         });
+
+        sendResponse({ success: true });
+        return true;
+    }
+
+    // 2.5) Start Batch Automation (Chunking)
+    if (message.action === "startBatchDownload") {
+        const { batchQueue, batchSize } = message;
+        
+        batchAutomationState.active = true;
+        batchAutomationState.queue = batchQueue || [];
+        batchAutomationState.batchSize = batchSize || 20;
+        batchAutomationState.currentBatchTabs = {};
+
+        console.log(`[batch] Starting batch mode. Total: ${batchAutomationState.queue.length}, Batch Size: ${batchAutomationState.batchSize}`);
+        processNextBatch();
 
         sendResponse({ success: true });
         return true;
@@ -166,10 +328,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
 
         chrome.tabs.remove(tabId, () => {
-            // Matikan mode rename setelah proses selesai
-            chrome.storage.local.set({ renameEnabled: false }, () => {
-                sendResponse({ success: true });
-            });
+            sendResponse({ success: true });
         });
 
         return true;
@@ -227,21 +386,86 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 if (tabId) chrome.tabs.remove(tabId);
             });
 
-            chrome.storage.local.set({ renameEnabled: false }, () =>
-                sendResponse({ success: true })
-            );
+            sendResponse({ success: true });
         });
 
         return true;
     }
 
-    // default
-    sendResponse({ ok: false, error: "unknown action" });
-    return true;
-});
+    // 7.5) Cancel Semua (dipakai popup.js)
+    if (message.action === "cancelAllDownloads") {
+        // Matikan batch automation jika aktif
+        batchAutomationState.active = false;
+        batchAutomationState.queue = [];
+        const batchTabIdsToClose = Object.keys(batchAutomationState.currentBatchTabs).map(id => parseInt(id, 10));
+        batchAutomationState.currentBatchTabs = {};
 
-// Allow popup/content to register a rename payload specific to a blob URL
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+        chrome.storage.local.get(null, (data) => {
+            const autoKeys = Object.keys(data).filter((k) => k.startsWith("auto_"));
+
+            // Hapus/batalkan tab automation
+            autoKeys.forEach((key) => {
+                const autoData = data[key];
+                chrome.storage.local.set({ [key]: { ...autoData, cancelled: true } });
+
+                const tabId = parseInt(key.replace("auto_", ""), 10);
+                if (tabId) chrome.tabs.remove(tabId).catch(() => {});
+            });
+
+            // Tutup tab regular batch yang sedang aktif
+            batchTabIdsToClose.forEach((tabId) => {
+                if (tabId) chrome.tabs.remove(tabId).catch(() => {});
+            });
+
+            // Hapus antrean BKB Monitoring dan tutup tab-nya
+            const bkbKeys = Object.keys(data).filter(k => k.startsWith('bkbMonitoring'));
+            bkbKeys.forEach(k => {
+                if (k.startsWith('bkbMonitoringKec_')) {
+                    const tabId = parseInt(k.replace('bkbMonitoringKec_', ''), 10);
+                    if (tabId) chrome.tabs.remove(tabId).catch(() => {});
+                }
+            });
+            if (bkbKeys.length > 0) {
+                chrome.storage.local.remove(bkbKeys);
+            }
+            
+            // Set status semua progress UI jadi fail
+            const updates = {};
+            Object.keys(data).forEach(k => {
+                if (k.startsWith('tabdownload_') && data[k].status === 'progress') {
+                    updates[k] = { ...data[k], status: 'fail', fileAkhir: 'Dibatalkan oleh user' };
+                }
+            });
+            if (Object.keys(updates).length > 0) {
+                chrome.storage.local.set(updates);
+            }
+
+            sendResponse({ success: true });
+        });
+
+        return true;
+    }
+
+    // 8) Content.js bertanya: apakah ada download SIGA yang selesai sejak `since` timestamp?
+    if (message.action === 'checkSigaDownload') {
+        const { since } = message;
+        // Cari semua download yang selesai dari domain SIGA
+        chrome.downloads.search(
+            { state: 'complete', limit: 10, orderBy: ['-startTime'] },
+            (items) => {
+                const found = items.find(item => {
+                    const host = getHostSafe(item.url);
+                    if (host !== ALLOWED_HOST) return false;
+                    // endTime adalah saat selesai download
+                    const endTs = item.endTime ? new Date(item.endTime).getTime() : 0;
+                    return endTs >= (since || 0);
+                });
+                sendResponse({ found: !!found, state: found ? 'complete' : null });
+            }
+        );
+        return true;
+    }
+
     if (message.action === 'registerBlobRename') {
         const { blobUrl, payload } = message;
         if (!blobUrl || !payload) { sendResponse({ ok: false }); return; }
@@ -251,12 +475,106 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         });
         return true;
     }
-    return false;
+
+    // 9.5) Start Batch Automation: popup request buka banyak tab paralel staggered
+    if (message.action === 'startBatchAutomation') {
+      const { initialTabsCount } = message;
+      // Berikan respons segera agar kanal pesan ditutup dengan bersih tanpa mengganggu eksekusi latar belakang
+      sendResponse({ ok: true });
+
+      chrome.storage.local.get(['bkbMonitoringBatch'], (res) => {
+        const batchMeta = res.bkbMonitoringBatch;
+        const plan = batchMeta.plan;
+        // Gunakan Rantai Pembuatan Tab (Chained Tab Creation) agar stabil 100% tanpa terkena throttling browser atau suspend
+        const createTabChained = (index) => {
+          if (index >= initialTabsCount) return;
+          
+          const kab = plan[index];
+          const url = `https://newsiga-siga.kemendukbangga.go.id/${batchMeta.targetRoute}`;
+          
+          chrome.tabs.create({ url, active: false }, (tab) => {
+            if (tab && tab.id) {
+              chrome.storage.local.set({
+                [`bkbMonitoringKec_${tab.id}`]: {
+                  mode: 'active',
+                  kabId: kab.kabId,
+                  kabName: kab.kabName,
+                  targetRoute: batchMeta.targetRoute,
+                  initialWaitMs: batchMeta.initialWaitMs,
+                  loopWaitMs: batchMeta.loopWaitMs,
+                  currentIndex: 0,
+                  queue: kab.queue,
+                  results: [],
+                  planIndex: index,
+                  lastUpdated: Date.now()
+                }
+              }, () => {
+                // Lanjutkan rantai setelah data storage berhasil ditulis dengan jeda 1.5 detik
+                setTimeout(() => createTabChained(index + 1), 1500);
+              });
+            } else {
+              // Jika terjadi error pada pembuatan tab, tetap lanjutkan antrean
+              setTimeout(() => createTabChained(index + 1), 1500);
+            }
+          });
+        };
+
+        // Mulai rantai pembuatan dari indeks 0
+        createTabChained(0);
+      });
+      return true;
+    }
+
+    // 9) Sequential Batch: content.js buka tab berikutnya lalu tutup dirinya
+    if (message.action === 'openNextBatchTab') {
+      const { nextKecState, nextStorageKey, closeTabId } = message;
+      if (!nextKecState || !nextStorageKey) {
+        if (closeTabId) chrome.tabs.remove(closeTabId).catch(() => {});
+        sendResponse({ ok: true });
+        return true;
+      }
+      const url = `https://newsiga-siga.kemendukbangga.go.id/${nextKecState.targetRoute || '#/kegiatan/kelompok_bkb'}`;
+      chrome.tabs.create({ url, active: true }, (newTab) => {
+        if (!newTab || !newTab.id) { sendResponse({ ok: false }); return; }
+        chrome.storage.local.set({ [nextStorageKey.replace('NEWTABID', newTab.id)]: { ...nextKecState, mode: 'active' } }, () => {
+          if (closeTabId) setTimeout(() => chrome.tabs.remove(closeTabId).catch(() => {}), 1500);
+          sendResponse({ ok: true, newTabId: newTab.id });
+        });
+      });
+      return true;
+    }
+
+    // default
+    sendResponse({ ok: false, error: "unknown action" });
+    return true;
 });
 
 // Cleanup auto data kalau tab automation ditutup
 chrome.tabs.onRemoved.addListener((tabId) => {
-    chrome.storage.local.remove([`auto_${tabId}`]);
+    // Check if it's part of the current batch
+    if (batchAutomationState.active && batchAutomationState.currentBatchTabs[tabId]) {
+        delete batchAutomationState.currentBatchTabs[tabId];
+        checkBatchCompletion();
+    }
+
+    const autoKey = `auto_${tabId}`;
+    chrome.storage.local.get([autoKey], (res) => {
+        if (res[autoKey]) {
+            chrome.storage.local.remove([autoKey], () => {
+                chrome.storage.local.get(null, (data) => {
+                    const autoKeys = Object.keys(data).filter((k) => k.startsWith("auto_"));
+                    if (autoKeys.length === 0) {
+                        chrome.storage.local.set({
+                            renameEnabled: false,
+                            renameContext: null,
+                            renameQueue: [],
+                            pendingRenameList: []
+                        });
+                    }
+                });
+            });
+        }
+    });
 });
 
 // =========================
@@ -357,82 +675,89 @@ chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
         if (placePartClean) parts.push(placePartClean);
 
         const prefix = parts.join('-');
-        const newName = `${prefix ? prefix + '-' : ''}${sanitize(originalBase)}.${sanitize(originalExt)}`;
+        
+        let folderPath = '';
+        if (context.folderMode === 'tabel' && context.tabelName) {
+            folderPath = sanitize(context.tabelName) + '/';
+        } else if (context.folderMode === 'none') {
+            folderPath = '';
+        } else if ((context.folderMode === 'kab' || !context.folderMode) && context.isBatchKabupaten && context.kotaAsli) {
+            // Ubah format '01 - ACEH SELATAN' menjadi '01 - Aceh Selatan'
+            let formattedKota = context.kotaAsli.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+            folderPath = sanitize(formattedKota) + '/';
+        }
+        
+        const newName = `${folderPath}${prefix ? prefix + '-' : ''}${sanitize(originalBase)}.${sanitize(originalExt)}`;
         console.log('[rename] buildFileName ->', { context, newName });
         suggest({ filename: newName, conflictAction: 'uniquify' });
     };
 
     const fallbackRename = (res) => {
-        if (!res.renameEnabled && (!Array.isArray(res.renameQueue) || res.renameQueue.length === 0) && !res.renameContext) {
-            console.warn('[rename] no context available, fallback to default', { downloadItem });
-            suggest({ filename: downloadItem.filename, conflictAction: 'uniquify' });
-            return;
+        const processNonAutoTab = () => {
+            if (!res.renameEnabled) {
+                console.warn('[rename] renameEnabled is false, skipping fallback rename', { downloadItem });
+                suggest({ filename: downloadItem.filename, conflictAction: 'uniquify' });
+                return;
+            }
+
+            dequeuePendingRename((pendingCtx, pendingQueue) => {
+                if (pendingCtx) {
+                    console.log('[rename] pending list context used', { pendingCtx, pendingRemaining: pendingQueue.length });
+                    buildFileName(pendingCtx);
+                    return;
+                }
+
+                if (Array.isArray(res.renameQueue) && res.renameQueue.length > 0) {
+                    const nextCtx = res.renameQueue.shift();
+                    console.log('[rename] fallback queue context', nextCtx);
+                    chrome.storage.local.set({
+                        renameQueue: res.renameQueue,
+                        renameContext: nextCtx,
+                        renameEnabled: res.renameQueue.length > 0,
+                    }, () => buildFileName(nextCtx));
+                    return;
+                }
+
+                console.log('[rename] fallback global context', res.renameContext);
+                if (res.renameContext) {
+                    buildFileName(res.renameContext);
+                } else {
+                    suggest({ filename: downloadItem.filename, conflictAction: 'uniquify' });
+                }
+            });
+        };
+
+        if (typeof downloadItem.tabId === 'number' && downloadItem.tabId >= 0) {
+            const tabKey = `auto_${downloadItem.tabId}`;
+            console.log('[rename] checking tab auto context', { tabKey });
+            chrome.storage.local.get([tabKey], (tabRes) => {
+                const autoData = tabRes[tabKey];
+                if (autoData) {
+                    const queueItem = Array.isArray(autoData.downloadQueue) ? autoData.downloadQueue[autoData.currentIndex] : null;
+                    const context = (queueItem && queueItem.renameContext) ? queueItem.renameContext : {
+                        periode: autoData.periode,
+                        tahun: autoData.tahun,
+                        kab: queueItem?.kota || autoData.kab || '',
+                        kec: autoData.kecamatan || autoData.kec || '',
+                        faskes: queueItem?.faskes || autoData.faskes || '',
+                        desa: queueItem?.desa || autoData.desa || '',
+                        kabCode: queueItem?.kabCode || autoData.kabCode || '',
+                        kecCode: queueItem?.kecCode || autoData.kecCode || '',
+                        desaCode: queueItem?.desaCode || autoData.desaCode || '',
+                        menu: autoData.menu || '',
+                        submenu: autoData.submenu || '',
+                        sasaran: autoData.sasaran || ''
+                    };
+                    console.log('[rename] tab context applied', { tabKey, context });
+                    buildFileName(context);
+                    return;
+                }
+                
+                processNonAutoTab();
+            });
+        } else {
+            processNonAutoTab();
         }
-
-        dequeuePendingRename((pendingCtx, pendingQueue) => {
-            if (pendingCtx) {
-                console.log('[rename] pending list context used', { pendingCtx, pendingRemaining: pendingQueue.length });
-                buildFileName(pendingCtx);
-                return;
-            }
-
-            if (typeof downloadItem.tabId === 'number' && downloadItem.tabId >= 0) {
-                const tabKey = `auto_${downloadItem.tabId}`;
-                console.log('[rename] checking tab auto context', { tabKey });
-                chrome.storage.local.get([tabKey], (tabRes) => {
-                    const autoData = tabRes[tabKey];
-                    if (autoData) {
-                        const queueItem = Array.isArray(autoData.downloadQueue) ? autoData.downloadQueue[autoData.currentIndex] : null;
-                        const context = {
-                            periode: autoData.periode,
-                            tahun: autoData.tahun,
-                            kab: queueItem?.kota || autoData.kab || '',
-                            kec: autoData.kecamatan || autoData.kec || '',
-                            faskes: queueItem?.faskes || autoData.faskes || '',
-                            desa: queueItem?.desa || autoData.desa || '',
-                            kabCode: queueItem?.kabCode || autoData.kabCode || '',
-                            kecCode: queueItem?.kecCode || autoData.kecCode || '',
-                            desaCode: queueItem?.desaCode || autoData.desaCode || '',
-                            menu: autoData.menu || '',
-                            submenu: autoData.submenu || '',
-                            sasaran: autoData.sasaran || ''
-                        };
-                        console.log('[rename] tab context applied', { tabKey, context });
-                        buildFileName(context);
-                        return;
-                    }
-
-                    if (Array.isArray(res.renameQueue) && res.renameQueue.length > 0) {
-                        const nextCtx = res.renameQueue.shift();
-                        console.log('[rename] fallback queue (tab-missing) context', nextCtx);
-                        chrome.storage.local.set({
-                            renameQueue: res.renameQueue,
-                            renameContext: nextCtx,
-                            renameEnabled: res.renameQueue.length > 0,
-                        }, () => buildFileName(nextCtx));
-                        return;
-                    }
-
-                    console.log('[rename] fallback global context', res.renameContext);
-                    buildFileName(res.renameContext || null);
-                });
-                return;
-            }
-
-            if (Array.isArray(res.renameQueue) && res.renameQueue.length > 0) {
-                const nextCtx = res.renameQueue.shift();
-                console.log('[rename] fallback queue (no tabId) context', nextCtx);
-                chrome.storage.local.set({
-                    renameQueue: res.renameQueue,
-                    renameContext: nextCtx,
-                    renameEnabled: res.renameQueue.length > 0,
-                }, () => buildFileName(nextCtx));
-                return;
-            }
-
-            console.log('[rename] fallback global context', res.renameContext);
-            buildFileName(res.renameContext || null);
-        });
     };
 
     const tryBlobContext = (attempts) => {
@@ -456,4 +781,40 @@ chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
     tryBlobContext(10);
 
     return true;
+});
+
+// =========================
+// DOWNLOAD COMPLETION DETECTION
+// Pakai chrome.downloads.search() agar tabId selalu tersedia
+// tanpa perlu simpan state di memory (MV3 service worker bisa restart kapan saja)
+// =========================
+chrome.downloads.onChanged.addListener((delta) => {
+    if (!delta.state) return;
+    const state = delta.state.current;
+    if (state !== 'complete' && state !== 'interrupted') return;
+
+    chrome.downloads.search({ id: delta.id }, (items) => {
+        if (!items || items.length === 0) return;
+        const item = items[0];
+
+        const host = getHostSafe(item.url);
+        if (host !== ALLOWED_HOST) return;
+
+        const tabId = item.tabId;
+        const result = { state, downloadId: delta.id, tabId, ts: Date.now() };
+        console.log(`[download-track] SIGA download ${delta.id} ${state} tabId=${tabId}`);
+
+        // Selalu tulis ke storage untuk setiap SIGA download
+        const toSet = {};
+        if (typeof tabId === 'number' && tabId >= 0) {
+            toSet[`downloadResult_${tabId}`] = result;
+        }
+        chrome.storage.local.set(toSet);
+
+        // Direct message ke tab (path cepat, opsional)
+        if (typeof tabId === 'number' && tabId >= 0) {
+            const action = state === 'complete' ? 'downloadComplete' : 'downloadInterrupted';
+            chrome.tabs.sendMessage(tabId, { action, downloadId: delta.id }).catch(() => {});
+        }
+    });
 });
