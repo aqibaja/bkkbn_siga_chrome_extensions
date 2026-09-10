@@ -1100,12 +1100,13 @@
   }
 
   const isTahunan = storage.periode && /^\d{4}$/.test(storage.periode);
+  const isMonitoringKRS = url.includes('monitoring-krs');
 
   // Untuk mode BULANAN: pilih TAHUN terlebih dahulu sebelum memilih BULAN/PERIODE.
   // Alasan: pada beberapa halaman SIGA, memilih Tahun menyebabkan dropdown Bulan direset ke
   // bulan saat ini (default). Dengan memilih Tahun lebih dulu, pemilihan Bulan di bawah tidak
   // terpengaruh reset tersebut.
-  if (!isTahunan && tahun) {
+  if (!isTahunan && tahun && !isMonitoringKRS) {
     const tahunDropdownFirst = await waitForDropdown("Tahun", 1);
     if (tahunDropdownFirst) {
       const r = await bukaDanPilihPadaDropdown(tahunDropdownFirst, tahun, url, kota, currentIndex, downloadQueue);
@@ -1116,32 +1117,48 @@
     await wait(300);
   }
 
-  // Pilih Periode (tahun untuk tahunan, bulan untuk bulanan)
-  const periodeDropdown = await waitForDropdown("Periode", 0);
-  if (periodeDropdown && periode) {
-    const rPeriode = await bukaDanPilihPadaDropdown(periodeDropdown, periode, url, kota, currentIndex, downloadQueue);
-    if (rPeriode === false) { await biarkanTabTerbukaUntukRetry(); return; }
-  } else if (periode) {
-    console.error('❌ Dropdown Periode tidak ditemukan (timeout)');
-    // Retry sekali dengan refresh jika ini percobaan pertama untuk kota ini
-    if (retryCount === 0) {
-      console.log(`🔄 Retry kota ${currentIndex + 1} (${kota}): refresh halaman...`);
-      await chrome.storage.local.set({
-        [key]: { ...storage, retryCount: 1 } // Tetap di currentIndex yang sama
-      });
-      setTimeout(() => location.reload(), 1000);
-      return;
-    } else {
-      console.error(`❌ Gagal menemukan dropdown setelah retry untuk kota: ${kota}`);
-      await markFail(getUrlHash(url), url, kota, downloadQueue, currentIndex, 'Dropdown Periode tidak ditemukan setelah retry');
-      await biarkanTabTerbukaUntukRetry();
-      return;
+  if (isMonitoringKRS) {
+    // Di form monitoring KRS, Periode = Tahun, Semester = Semester
+    const periodeYearDropdown = await waitForDropdown("Periode", 0);
+    if (periodeYearDropdown && tahun) {
+      const r = await bukaDanPilihPadaDropdown(periodeYearDropdown, tahun, url, kota, currentIndex, downloadQueue);
+      if (r === false) { await biarkanTabTerbukaUntukRetry(); return; }
+    }
+    await wait(300);
+    
+    const semesterDropdown = await waitForDropdown("Semester", 0);
+    if (semesterDropdown && periode) {
+      const r = await bukaDanPilihPadaDropdown(semesterDropdown, periode, url, kota, currentIndex, downloadQueue);
+      if (r === false) { await biarkanTabTerbukaUntukRetry(); return; }
+    }
+  } else {
+    // Pilih Periode (tahun untuk tahunan, bulan untuk bulanan)
+    const periodeDropdown = await waitForDropdown("Periode", 0);
+    if (periodeDropdown && periode) {
+      const rPeriode = await bukaDanPilihPadaDropdown(periodeDropdown, periode, url, kota, currentIndex, downloadQueue);
+      if (rPeriode === false) { await biarkanTabTerbukaUntukRetry(); return; }
+    } else if (periode) {
+      console.error('❌ Dropdown Periode tidak ditemukan (timeout)');
+      // Retry sekali dengan refresh jika ini percobaan pertama untuk kota ini
+      if (retryCount === 0) {
+        console.log(`🔄 Retry kota ${currentIndex + 1} (${kota}): refresh halaman...`);
+        await chrome.storage.local.set({
+          [key]: { ...storage, retryCount: 1 } // Tetap di currentIndex yang sama
+        });
+        setTimeout(() => location.reload(), 1000);
+        return;
+      } else {
+        console.error(`❌ Gagal menemukan dropdown setelah retry untuk kota: ${kota}`);
+        await markFail(getUrlHash(url), url, kota, downloadQueue, currentIndex, 'Dropdown Periode tidak ditemukan setelah retry');
+        await biarkanTabTerbukaUntukRetry();
+        return;
+      }
     }
   }
 
   // Pilih Tahun (hanya untuk tahunan — mode bulanan sudah dipilih sebelum Periode di atas)
   await wait(300);
-  if (isTahunan && tahun) {
+  if (isTahunan && tahun && !isMonitoringKRS) {
     const tahunDropdown = await waitForDropdown("Tahun", 1);
     if (tahunDropdown) {
       const r = await bukaDanPilihPadaDropdown(tahunDropdown, tahun, url, kota, currentIndex, downloadQueue);

@@ -1135,8 +1135,21 @@ function handleClearDone() {
 function handleStopAllDownloads() {
   if (!confirm('Apakah Anda yakin ingin membatalkan semua proses download yang sedang berjalan (termasuk antrean batch)?')) return;
   chrome.runtime.sendMessage({ action: 'cancelAllDownloads' }, (resp) => {
-    alert('✅ Semua proses download telah dibatalkan.');
-    setTimeout(() => renderDownloadTab(), 500);
+    // Juga perlu set state tabdownload_ menjadi fail dari sisi popup 
+    // untuk memastikan tampilan UI update jika background gagal mengubahnya
+    chrome.storage.local.get(null, result => {
+      const updates = {};
+      Object.keys(result).forEach(k => {
+        if (k.startsWith('tabdownload_') && result[k].status === 'progress') {
+          updates[k] = { ...result[k], status: 'fail', fileAkhir: 'Dibatalkan oleh user' };
+        }
+      });
+      if (Object.keys(updates).length > 0) {
+        chrome.storage.local.set(updates);
+      }
+      alert('✅ Semua proses download telah dibatalkan.');
+      setTimeout(() => renderDownloadTab(), 500);
+    });
   });
 }
 
@@ -2384,11 +2397,11 @@ const fieldVisibilityConfig = {
   },
   'krs-keluarga': {
     hideTabs: ['tahunan'],
-    bulanan: { hide: ['jenis-laporan-bulanan'] }
+    bulanan: { hide: [] }
   },
   'monitoring-krs': {
     hideTabs: ['tahunan'],
-    bulanan: { hide: ['jenis-laporan-bulanan'] }
+    bulanan: { hide: [] }
   },
   'catin': {
     hideTabs: ['tahunan'],
