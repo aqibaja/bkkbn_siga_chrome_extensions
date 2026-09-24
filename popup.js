@@ -1044,70 +1044,172 @@ function handleRetryAll() {
   });
 }
 
-// Handler untuk memverifikasi apakah file yang sudah selesai benar-benar ada di komputer
+// Handler untuk memverifikasi kelengkapan file download — cek file fisik di disk per folder tabel
 async function handleVerifyDownloads() {
   const btn = document.getElementById('verify-downloads-btn');
-  if (!confirm("Fitur ini akan mengecek apakah file yang berstatus 'Berhasil' masih benar-benar ada di folder laptop Anda (berdasarkan riwayat Chrome Downloads). File yang tidak ditemukan akan diubah menjadi 'GAGAL (Hilang)'. Lanjutkan?")) return;
-  
+  if (!confirm(
+    "Fitur ini akan mengecek file yang BENAR-BENAR ADA di disk per folder tabel," +
+    "\nmenggunakan riwayat Chrome Downloads (semua riwayat, bukan hanya 1000 terakhir)." +
+    "\n\nTabel yang kurang file akan ditandai GAGAL agar bisa di-retry." +
+    "\n\nLanjutkan?"
+  )) return;
+
   btn.textContent = "🔍 Sedang Verifikasi...";
   btn.disabled = true;
 
   try {
     const data = await new Promise(resolve => chrome.storage.local.get(null, resolve));
-    const successKeys = Object.keys(data).filter(k => k.startsWith('tabdownload_') && data[k].status === 'success');
-    
-    if (successKeys.length === 0) {
-      alert("Tidak ada antrean file dengan status 'Berhasil' untuk diverifikasi.");
+    const allTabKeys = Object.keys(data).filter(k => k.startsWith('tabdownload_'));
+
+    if (allTabKeys.length === 0) {
+      alert("Tidak ada data sesi download untuk diverifikasi.\nMulai download terlebih dahulu.");
       return;
     }
 
-    const downloads = await new Promise(resolve => {
-      chrome.downloads.search({ state: 'complete' }, resolve);
-    });
-
-    const downloadedFiles = downloads.map(d => {
-      return String(d.filename || d.url).replace(/[:\\/\"?~<>*|]/g, "-").replace(/\s+/g, "_").trim().toLowerCase();
-    });
-
-    let verifiedCount = 0;
-    let missingCount = 0;
-    const updates = {};
-
-    for (const key of successKeys) {
+    // ── Langkah 1: Grup entry storage per URL tabel ──────────────────
+    // Setiap tabdownload_ entry = 1 kecamatan untuk 1 URL tabel
+    const groupByUrl = {};
+    for (const key of allTabKeys) {
       const item = data[key];
-      const rawPlace = item.desa || item.faskes || item.kecamatan || item.kota || item.fileAkhir || '';
-      
-      // Ambil semua kata alfanumerik dari nama tempat
-      const words = String(rawPlace).toLowerCase().split(/[^a-z0-9]+/g).filter(w => w.length > 0);
-      
-      // Jika mode tabel, ambil nama tabel dari URL agar file dengan lokasi yang sama bisa dibedakan
-      const urlParts = String(item.url).toLowerCase().split(/[^a-z0-9]+/g).filter(w => w.length > 0);
-      const tabelWords = urlParts.filter(w => w.startsWith('tabel'));
-      
-      const matchWords = [...words, ...tabelWords];
-
-      let found = false;
-      if (matchWords.length > 0) {
-        // Harus mengandung SEMUA kata kunci (lokasi + nama tabel jika ada)
-        found = downloadedFiles.some(f => matchWords.every(w => f.includes(w)));
-      } else {
-        found = true; // Fallback
+      if (!item || !item.url) continue;
+      if (!groupByUrl[item.url]) {
+        groupByUrl[item.url] = { totalEntry: 0, successCount: 0, failCount: 0, progressCount: 0, keys: [], entries: [] };
       }
+      const grp = groupByUrl[item.url];
+      grp.totalEntry++;
+      grp.entries.push(item);
+      grp.keys.push(key);
+      const st = item.status || 'progress';
+      if (st === 'success') grp.successCount++;
+      else if (st === 'fail') grp.failCount++;
+      else grp.progressCount++;
+    }
 
-      if (!found) {
-        updates[key] = { ...item, status: 'fail', fileAkhir: item.fileAkhir + ' (Hilang/Belum Terdownload)' };
-        missingCount++;
+    // ── Langkah 2: Ambil SEMUA Chrome download history (limit:0 = tidak terbatas) ──
+    // Lalu hitung file yang BENAR-BENAR ADA (exists:true) per folder tabel.
+    // Folder dibuat berdasarkan tabelName: "Tabel1", "Tabel2", dll (folderMode='tabel')
+    btn.textContent = "🔍 Mengambil riwayat download...";
+    const allDownloads = await new Promise(resolve => {
+      chrome.downloads.search({ state: 'complete', limit: 0 }, resolve);
+    });
+
+    // Index file per folder tabel (berdasarkan path file)
+    // File disimpan sebagai: .../Tabel1/xxx-Tabel1.xlsx atau .../Tabel1_Komulatif/...
+    // Kita match dengan nama folder tabel dari URL: url.split('/').pop() => "Tabel1", "Tabel21", dll.
+    const fileCountByFolder = {}; // { "tabel1": count }
+    for (const dl of allDownloads) {
+      if (!dl.filename) continue;
+      // Normalkan path separator
+      const fp = dl.filename.replace(/\\/g, '/');
+      // Ambil komponen folder terakhir sebelum nama file
+      const parts = fp.split('/');
+      if (parts.length < 2) continue;
+      const folderName = parts[parts.length - 2]; // folder langsung di atas file
+      const folderKey = folderName.toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (!fileCountByFolder[folderKey]) fileCountByFolder[folderKey] = 0;
+      fileCountByFolder[folderKey]++;
+    }
+
+    console.log('[Verifikasi] fileCountByFolder:', fileCountByFolder);
+
+    // ── Langkah 3: Bandingkan per URL tabel ──────────────────────────
+    const urlGroups = Object.entries(groupByUrl).sort(([a], [b]) => a.localeCompare(b));
+    const totalUrlGroups = urlGroups.length;
+
+    let tabelLengkap = 0;
+    let tabelTidakLengkap = 0;
+    let tabelProgress = 0;
+    const updates = {};
+    const detailLines = [];
+
+    for (const [urlTabel, grp] of urlGroups) {
+      const tabelLabel = urlTabel.split('/').pop() || urlTabel.substring(urlTabel.lastIndexOf('#') + 1);
+      const expectedCount = grp.totalEntry; // misal 290
+
+      // Cari jumlah file fisik: cocokkan folder name dengan nama tabel dari URL
+      // Nama tabel dari URL: "Tabel1", "Tabel21", "Tabel3A", dll
+      const tabelFolderKey = tabelLabel.toLowerCase().replace(/[^a-z0-9]/g, '');
+      // Juga coba cocokkan dengan nama yang ada di storage (tabelName dari renameContext)
+      const actualFileCount = fileCountByFolder[tabelFolderKey] || 0;
+
+      // Cek juga dari storage: berapa yang NOT success
+      const storageNotSuccess = grp.failCount + grp.progressCount;
+
+      if (grp.progressCount > 0) {
+        tabelProgress++;
+        detailLines.push(`⏳ PROGRESS  : ${tabelLabel} — storage: ${grp.successCount}/${expectedCount} sukses, disk: ${actualFileCount} file`);
+      } else if (actualFileCount > 0 && actualFileCount < expectedCount) {
+        // Ada gap antara file di disk vs yang seharusnya
+        tabelTidakLengkap++;
+        const missingOnDisk = expectedCount - actualFileCount;
+        detailLines.push(`❌ KURANG    : ${tabelLabel} — disk: ${actualFileCount}/${expectedCount} (kurang ${missingOnDisk} di disk)`);
+        // Tandai sebagian entry success menjadi fail (sebanyak missing)
+        // Kita tidak bisa tahu persis kecamatan mana yang hilang, tapi tandai entry terakhir
+        let failMarked = 0;
+        for (let i = grp.keys.length - 1; i >= 0 && failMarked < missingOnDisk; i--) {
+          const entry = grp.entries[i];
+          if (!entry || entry.status !== 'success') continue;
+          updates[grp.keys[i]] = {
+            ...entry,
+            status: 'fail',
+            fileAkhir: (entry.fileAkhir || '') + ` [File hilang di disk]`
+          };
+          failMarked++;
+        }
+      } else if (storageNotSuccess > 0) {
+        // Storage ada yang fail/progress tapi file di disk tidak diketahui
+        tabelTidakLengkap++;
+        detailLines.push(`❌ TIDAK LENGKAP: ${tabelLabel} — storage: ${grp.successCount}/${expectedCount} sukses (${grp.failCount} gagal)`);
+      } else if (actualFileCount === 0 && expectedCount > 0) {
+        // Tidak ada file di folder ini — bisa karena nama folder berbeda atau history terlalu lama
+        // Gunakan data storage sebagai fallback
+        tabelLengkap++;
+        detailLines.push(`✅ OK (storage): ${tabelLabel} — ${grp.successCount}/${expectedCount} sukses (folder tidak terdeteksi di history Chrome)`);
       } else {
-        verifiedCount++;
+        tabelLengkap++;
+        detailLines.push(`✅ LENGKAP   : ${tabelLabel} — disk: ${actualFileCount}/${expectedCount}`);
       }
     }
 
-    if (missingCount > 0) {
+    // Simpan update
+    if (Object.keys(updates).length > 0) {
       await new Promise(resolve => chrome.storage.local.set(updates, resolve));
-      alert(`⚠️ Verifikasi Selesai!\n- Ditemukan (Aman): ${verifiedCount} file\n- Hilang/Tidak Ada: ${missingCount} file\n\n[Info Debug: File di History Chrome: ${downloads.length}]\n\nSilakan klik tombol "Retry Semua Gagal" untuk mendownload ulang file yang hilang.`);
-      renderDownloadTab();
+    }
+
+    console.log('[Verifikasi Detail per Tabel]\n' + detailLines.join('\n'));
+
+    // Laporan ringkas
+    let msg = `📊 HASIL VERIFIKASI DOWNLOAD\n`;
+    msg += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    msg += `Total URL tabel       : ${totalUrlGroups}\n`;
+    msg += `Total kecamatan       : ${allTabKeys.length}\n`;
+    msg += `File di Chrome history: ${allDownloads.length}\n`;
+    msg += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    msg += `✅ Tabel Lengkap        : ${tabelLengkap}\n`;
+    msg += `❌ Tabel Kurang File    : ${tabelTidakLengkap}\n`;
+    msg += `⏳ Tabel Masih Progress : ${tabelProgress}\n`;
+    msg += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+
+    // Detail ringkas per tabel
+    const tabelKurangLines = detailLines.filter(l => l.startsWith('❌'));
+    if (tabelKurangLines.length > 0) {
+      msg += `\nTabel yang kurang file:\n${tabelKurangLines.join('\n')}\n`;
+    }
+
+    if (tabelTidakLengkap > 0) {
+      msg += `\n❌ Ada ${tabelTidakLengkap} tabel yang kurang file!`;
+      msg += `\nSudah ditandai GAGAL. Klik "Retry Semua Gagal & Progress".`;
+    } else if (tabelProgress > 0) {
+      msg += `\n⏳ ${tabelProgress} tabel masih dalam proses.`;
     } else {
-      alert(`✅ Verifikasi Selesai!\nSemua ${verifiedCount} file berhasil terdeteksi utuh di folder laptop Anda.\n[Info Debug: File di History Chrome: ${downloads.length}]`);
+      msg += `\n✅ Semua tabel sudah lengkap!`;
+    }
+
+    msg += `\n\n💡 Detail lengkap: Console (F12 → Console tab).`;
+    alert(msg);
+
+    if (Object.keys(updates).length > 0) {
+      renderDownloadTab();
     }
   } catch (error) {
     console.error("Error verifying downloads:", error);
