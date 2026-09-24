@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Audit & Verifikasi Folder Download — SIGA Smart Downloader</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="audit.css">
+</head>
+<body>
+  <!-- Header App Bar -->
+  <header class="app-header">
+    <div class="header-inner">
+      <div class="brand">
+        <img src="assets/logo.png" alt="SIGA Smart Downloader Logo" class="brand-logo" onerror="this.src='icons/icon48.png'">
+        <div class="brand-text">
+          <div class="brand-title-wrap">
+            <h1 class="brand-title">SIGA Smart Audit</h1>
+            <span class="badge-tag">v2.0</span>
+          </div>
+          <p class="brand-subtitle">Pemeriksa Kelengkapan File Hasil Unduhan SIGA per Kecamatan & Tabel</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button id="btn-reselect-folder" class="btn-secondary" style="display: none;">
+          <span class="icon">📂</span> Ganti Folder
+        </button>
+        <button id="btn-copy-summary" class="btn-outline" style="display: none;">
+          <span class="icon">📋</span> Salin Ringkasan
+        </button>
+        <button id="btn-export-csv" class="btn-outline" style="display: none;">
+          <span class="icon">📥</span> Export CSV
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="main-container">
+    <!-- State 1: Dropzone & File Picker (Initial State) -->
+    <section id="dropzone-section" class="dropzone-section">
+      <div class="dropzone-card" id="dropzone">
+        <div class="dropzone-icon-ring">
+          <span class="dropzone-icon">📁</span>
+        </div>
+        <h2 class="dropzone-title">Pilih Folder Hasil Unduhan SIGA</h2>
+        <p class="dropzone-desc">
+          Tarik dan lepaskan (drag & drop) folder yang berisi file download tabel SIGA ke sini,<br>
+          atau klik tombol di bawah untuk memilih folder dari komputer Anda.
+        </p>
+
+        <div class="dropzone-actions">
+          <button type="button" id="btn-choose-folder" class="btn-primary-glow">
+            <span class="icon">📂</span> Pilih Folder Hasil Download
+          </button>
+          <input type="file" id="folder-input" webkitdirectory directory multiple style="display: none;">
+        </div>
+
+        <div class="dropzone-features">
+          <div class="feature-item">
+            <span class="feature-icon">⚡</span>
+            <span>Mendukung subfolder (misal <code>Tabel11/</code>, <code>Tabel16/</code>) maupun 1 folder gabungan</span>
+          </div>
+          <div class="feature-item">
+            <span class="feature-icon">🔍</span>
+            <span>Otomatis membandingkan 290 kecamatan & mendeteksi file yang terlewat / gagal</span>
+          </div>
+          <div class="feature-item">
+            <span class="feature-icon">🔒</span>
+            <span>Proses 100% lokal & instan di browser Anda (tidak ada file yang diunggah ke internet)</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- State 2: Processing / Loading Indicator -->
+    <section id="loading-section" class="loading-section" style="display: none;">
+      <div class="loading-card">
+        <div class="spinner"></div>
+        <h3 id="loading-title">Sedang memindai folder...</h3>
+        <p id="loading-detail" class="text-muted">Membaca daftar file dan mengurai nama tabel & kecamatan...</p>
+        <div class="loading-progress-bar">
+          <div id="loading-progress-fill" class="progress-fill" style="width: 0%;"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- State 3: Results Dashboard -->
+    <section id="dashboard-section" class="dashboard-section" style="display: none;">
+      <!-- KPI Stats Grid -->
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-icon-wrap bg-blue">
+            <span class="stat-icon">📄</span>
+          </div>
+          <div class="stat-content">
+            <div class="stat-label">Total File Terdeteksi</div>
+            <div class="stat-value" id="stat-total-files">0</div>
+            <div class="stat-sub" id="stat-folder-name">-</div>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-icon-wrap bg-purple">
+            <span class="stat-icon">📊</span>
+          </div>
+          <div class="stat-content">
+            <div class="stat-label">Total Tabel Ditemukan</div>
+            <div class="stat-value" id="stat-total-tables">0</div>
+            <div class="stat-sub" id="stat-tables-list">-</div>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-icon-wrap bg-cyan">
+            <span class="stat-icon">🗺️</span>
+          </div>
+          <div class="stat-content">
+            <div class="stat-label">Total Kecamatan / Wilayah</div>
+            <div class="stat-value" id="stat-total-items">0</div>
+            <div class="stat-sub" id="stat-master-info">-</div>
+          </div>
+        </div>
+
+        <div class="stat-card" id="card-missing-stat">
+          <div class="stat-icon-wrap bg-red" id="stat-missing-icon-wrap">
+            <span class="stat-icon">⚠️</span>
+          </div>
+          <div class="stat-content">
+            <div class="stat-label">Kecamatan Kurang File</div>
+            <div class="stat-value text-danger" id="stat-missing-count">0</div>
+            <div class="stat-sub" id="stat-missing-files-total">0 file belum terunduh</div>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-icon-wrap bg-green">
+            <span class="stat-icon">🎯</span>
+          </div>
+          <div class="stat-content">
+            <div class="stat-label">Tingkat Kelengkapan</div>
+            <div class="stat-value text-success" id="stat-completeness-pct">0%</div>
+            <div class="progress-bar-sm">
+              <div id="stat-completeness-bar" class="progress-fill-success" style="width: 0%;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Action Alert Banner (if items are missing) -->
+      <div id="alert-banner" class="alert-banner">
+        <div class="alert-content">
+          <span class="alert-icon">💡</span>
+          <div class="alert-text">
+            <strong id="alert-title">Ditemukan data yang belum lengkap!</strong>
+            <span id="alert-desc">Ada beberapa kecamatan yang belum memiliki file lengkap di semua tabel. Anda dapat menyalin daftarnya atau mengirimnya ke extension untuk diunduh ulang.</span>
+          </div>
+        </div>
+        <div class="alert-actions">
+          <button id="btn-copy-missing-only" class="btn-alert-outline">
+            📋 Salin Kecamatan Kurang
+          </button>
+          <button id="btn-queue-retry" class="btn-alert-primary">
+            ⚡ Siapkan Download Ulang
+          </button>
+        </div>
+      </div>
+
+      <!-- Section: Prioritas Utama - Kecamatan Yang Kurang -->
+      <div id="section-top-missing" class="panel-section">
+        <div class="panel-header">
+          <div>
+            <h2 class="panel-title">🚨 Daftar Kecamatan yang Kurang (Perlu Download Ulang)</h2>
+            <p class="panel-desc">Kecamatan yang file tabelnya belum lengkap, diurutkan dari yang paling banyak kurang.</p>
+          </div>
+          <span class="badge-count-red" id="top-missing-badge">0 Kecamatan</span>
+        </div>
+        <div class="top-missing-grid" id="top-missing-grid">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <!-- Section: Ringkasan per Tabel -->
+      <div class="panel-section">
+        <div class="panel-header">
+          <div>
+            <h2 class="panel-title">📊 Kelengkapan File per Tabel</h2>
+            <p class="panel-desc">Jumlah file yang ditemukan per kategori tabel di dalam folder.</p>
+          </div>
+        </div>
+        <div class="table-summary-grid" id="table-summary-grid">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <!-- Section: Matriks Detail & Filter Table -->
+      <div class="panel-section">
+        <div class="panel-header panel-header-controls">
+          <div>
+            <h2 class="panel-title">📋 Matriks Kelengkapan Detail</h2>
+            <p class="panel-desc">Lihat status ketersediaan file untuk setiap kecamatan di seluruh tabel.</p>
+          </div>
+          <div class="view-controls">
+            <!-- Filter Tabs -->
+            <div class="filter-tabs">
+              <button class="filter-tab active" data-filter="missing">
+                🔴 Kurang Saja (<span id="tab-count-missing">0</span>)
+              </button>
+              <button class="filter-tab" data-filter="all">
+                Semua (<span id="tab-count-all">0</span>)
+              </button>
+              <button class="filter-tab" data-filter="complete">
+                ✅ Lengkap (<span id="tab-count-complete">0</span>)
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Filter Bar -->
+        <div class="filter-bar">
+          <div class="search-box">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="input-search" placeholder="Cari kecamatan, kabupaten, atau kode..." autocomplete="off">
+            <button id="btn-clear-search" class="btn-clear" style="display: none;">✕</button>
+          </div>
+
+          <div class="filter-dropdowns">
+            <select id="select-filter-kab">
+              <option value="">Semua Kabupaten</option>
+            </select>
+
+            <select id="select-filter-table">
+              <option value="">Semua Tabel</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Matrix Table Container -->
+        <div class="matrix-table-wrapper">
+          <table class="matrix-table" id="matrix-table">
+            <thead id="matrix-thead">
+              <!-- Populated by JS -->
+            </thead>
+            <tbody id="matrix-tbody">
+              <!-- Populated by JS -->
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Table Footer / Pagination Info -->
+        <div class="table-footer">
+          <div id="table-info" class="text-muted">Menampilkan 0 dari 0 data</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Modal Tambah ke Antrean Download (Status Gagal) -->
+  <div id="modal-queue-retry" class="modal-overlay" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <span class="modal-icon">⚡</span>
+          <h3 class="modal-title">Masukkan File Kurang ke Antrean Download</h3>
+        </div>
+        <button type="button" class="btn-modal-close" id="btn-close-modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-desc">
+          Sistem akan memasukkan <strong id="modal-total-missing-files" class="text-danger">0</strong> file yang belum ada di disk dari <strong id="modal-total-missing-kecs">0</strong> kecamatan langsung ke antrean ekstensi dengan status <span class="badge-status-fail">🔴 GAGAL (Error)</span>.
+        </p>
+
+        <div class="modal-info-box">
+          <div class="info-row">
+            <span class="info-label">Kecamatan Terdampak:</span>
+            <span class="info-val" id="modal-missing-kecs-text">-</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Kategori Tabel:</span>
+            <span class="info-val text-mono" id="modal-missing-tables-text">-</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Mode Eksekusi:</span>
+            <span class="info-val">Hanya unduh file & kecamatan ini (tanpa menyentuh wilayah lain)</span>
+          </div>
+        </div>
+
+        <div class="modal-options">
+          <label class="modal-checkbox-row">
+            <input type="checkbox" id="check-clean-old-queue" checked>
+            <span><strong>Bersihkan antrean unduhan lama</strong><br><small class="text-muted">Rekomendasi: hapus data lama agar hanya file yang kurang ini yang ada di antrean retry.</small></span>
+          </label>
+        </div>
+
+        <div class="modal-hint-box">
+          💡 <strong>Cara Kerja:</strong> Setelah dimasukkan, buka popup ekstensi > Tab <strong>Download Progress</strong> > Klik tombol <strong>"♻️ Retry Semua Gagal & Progress"</strong>. Hanya file-file ini yang akan diunduh secara batch.
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-modal-cancel" id="btn-cancel-modal">Batal</button>
+        <button type="button" class="btn-primary-glow" id="btn-confirm-queue-fail">
+          📥 Masukkan ke Antrean Ekstensi (Status Gagal)
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Notification Toast -->
+  <div id="toast" class="toast"></div>
+
+  <script src="audit.js"></script>
+</body>
+</html>

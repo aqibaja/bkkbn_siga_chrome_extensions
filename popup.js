@@ -682,7 +682,7 @@ function renderDownloadTab() {
       .filter(k => k.startsWith('tabdownload_')));
     const entries = Object.keys(data)
       .filter(k => k.startsWith('tabdownload_'))
-      .map(k => data[k])
+      .map(k => ({ ...data[k], _key: k }))
       .sort((a, b) => (a.urlIndex || 0) - (b.urlIndex || 0));
 
     let blocks = entries.map((item, i) => {
@@ -705,13 +705,13 @@ function renderDownloadTab() {
       let actionButtons = '';
       if (statClass === "fail") {
         actionButtons = `
-          <button class="retry-btn" data-url="${item.url}" style="background:#ff9800; color:#fff; border:none; padding:6px 12px; border-radius:4px; cursor:pointer; font-size:12px;">
+          <button class="retry-btn" data-key="${item._key || ''}" data-url="${item.url}" style="background:#ff9800; color:#fff; border:none; padding:6px 12px; border-radius:4px; cursor:pointer; font-size:12px;">
             🔄 Retry Failed
           </button>
         `;
       } else if (statClass === "downloading") {
         actionButtons = `
-          <button class="retry-progress-btn" data-url="${item.url}" style="background:#ff9800; color:#fff; border:none; padding:6px 12px; border-radius:4px; cursor:pointer; font-size:12px; margin-right:6px;">
+          <button class="retry-progress-btn" data-key="${item._key || ''}" data-url="${item.url}" style="background:#ff9800; color:#fff; border:none; padding:6px 12px; border-radius:4px; cursor:pointer; font-size:12px; margin-right:6px;">
             🔄 Retry
           </button>
           <button class="cancel-btn" data-url="${item.url}" style="background:#e12121; color:#fff; border:none; padding:6px 12px; border-radius:4px; cursor:pointer; font-size:12px;">
@@ -743,7 +743,8 @@ function renderDownloadTab() {
     document.querySelectorAll('.retry-btn').forEach(btn => {
       btn.addEventListener('click', function () {
         const url = this.getAttribute('data-url');
-        handleRetryFailedItems(url);
+        const targetKey = this.getAttribute('data-key');
+        handleRetryFailedItems(url, targetKey);
       });
     });
 
@@ -764,18 +765,20 @@ function renderDownloadTab() {
 }
 
 // Handler untuk retry item yang gagal
-function handleRetryFailedItems(url) {
-  if (!confirm(`Retry semua item yang gagal untuk URL:\n${url}?`)) return;
+function handleRetryFailedItems(url, targetKey = null) {
+  if (!confirm(`Retry item yang gagal untuk URL:\n${url}?`)) return;
 
   chrome.storage.local.get(null, function (data) {
     // Cari semua auto_* keys untuk URL ini
     const autoKeys = Object.keys(data).filter(k => k.startsWith('auto_'));
+    let found = false;
 
     for (const key of autoKeys) {
       const autoData = data[key];
       if (autoData && autoData.downloadQueue) {
         const firstItem = autoData.downloadQueue[0];
         if (firstItem && firstItem.url === url) {
+          found = true;
           // Cari index item pertama yang gagal
           const failedItems = autoData.downloadQueue
             .map((item, idx) => ({ item, idx }))
@@ -829,6 +832,24 @@ function handleRetryFailedItems(url) {
           }
           break;
         }
+      }
+    }
+
+    if (!found) {
+      // Tab sudah tertutup / item dari antrean audit: buka tab baru dengan dataSingle
+      let tabKey = targetKey;
+      if (!tabKey || !data[tabKey]) {
+        const urlHash = safeUrlHash(url);
+        tabKey = Object.keys(data).find(k => k.startsWith(`tabdownload_${urlHash}`) && data[k]?.status === 'fail');
+      }
+
+      if (tabKey && data[tabKey] && data[tabKey].dataSingle) {
+        chrome.runtime.sendMessage({ action: 'processData', data: data[tabKey].dataSingle });
+        chrome.storage.local.set({ [tabKey]: { ...data[tabKey], status: 'progress', fileAkhir: 'Retry (Tab Baru)...' } });
+        alert('🔄 Membuka tab baru untuk melanjutkan proses yang tertutup.');
+        setTimeout(() => renderDownloadTab(), 500);
+      } else {
+        alert('Tab untuk URL ini tidak ditemukan dan data state lama tidak lengkap.\nSilakan jalankan dari form awal atau gunakan Retry Semua.');
       }
     }
   });
@@ -1062,7 +1083,11 @@ async function handleVerifyDownloads() {
     const allTabKeys = Object.keys(data).filter(k => k.startsWith('tabdownload_'));
 
     if (allTabKeys.length === 0) {
-      alert("Tidak ada data sesi download untuk diverifikasi.\nMulai download terlebih dahulu.");
+      btn.textContent = "🔍 Verifikasi History";
+      btn.disabled = false;
+      if (confirm("Tidak ada data sesi unduhan aktif di antrean extension saat ini.\n\nApakah Anda ingin membuka tool 'Audit & Cek Folder Disk' untuk memindai file lama yang sudah ada di komputer Anda?")) {
+        openAuditTool();
+      }
       return;
     }
 
@@ -1350,6 +1375,13 @@ tabButtons.forEach(button => {
     saveUserPrefs();
   });
 });
+
+// Tombol Buka Halaman Audit & Cek Kelengkapan File
+function openAuditTool() {
+  chrome.tabs.create({ url: chrome.runtime.getURL('audit.html') });
+}
+document.getElementById('btn-menu-audit')?.addEventListener('click', openAuditTool);
+document.getElementById('audit-disk-btn')?.addEventListener('click', openAuditTool);
 
 // Tombol Retry Semua & Bersihkan Selesai di tab Download
 document.getElementById('retry-all-btn')?.addEventListener('click', handleRetryAll);
@@ -3185,3 +3217,39 @@ function restoreUserPrefs() {
 
 // On load: show menu screen
 showScreen(menuScreen);
+
+// Cek antrean hasil audit folder
+function checkAuditRetryBanner() {
+  chrome.storage.local.get(['openDownloadTabOnLoad', 'auditRetryQueue', 'tabdownload_'], (res) => {
+    // Jika flag openDownloadTabOnLoad aktif dari audit tool, langsung buka tab Download Progress
+    if (res.openDownloadTabOnLoad) {
+      chrome.storage.local.remove(['openDownloadTabOnLoad']);
+      showScreen(formScreen);
+      switchToDownloadTab();
+      return;
+    }
+
+    const queue = res.auditRetryQueue;
+    const banner = document.getElementById('audit-retry-banner');
+    const textEl = document.getElementById('audit-retry-text');
+    if (banner && textEl && Array.isArray(queue) && queue.length > 0) {
+      textEl.textContent = `Terdapat ${queue.length} file kurang yang telah dimasukkan ke antrean download (status Gagal).`;
+      banner.style.display = 'block';
+    }
+  });
+}
+
+document.getElementById('btn-open-download-queue')?.addEventListener('click', () => {
+  showScreen(formScreen);
+  switchToDownloadTab();
+});
+
+document.getElementById('btn-dismiss-audit-banner')?.addEventListener('click', () => {
+  chrome.storage.local.remove(['auditRetryQueue']);
+  const b = document.getElementById('audit-retry-banner');
+  if (b) b.style.display = 'none';
+});
+
+document.getElementById('btn-view-audit')?.addEventListener('click', openAuditTool);
+
+checkAuditRetryBanner();

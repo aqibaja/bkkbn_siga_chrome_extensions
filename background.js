@@ -22,59 +22,18 @@ function sanitize(s) {
 }
 
 // Helper: antrian rename context (untuk multi-download supaya tidak saling overwrite)
-let enqueuePromise = Promise.resolve();
+// CATATAN: Fungsi enqueue/dequeue global dihapus karena menyebabkan rename salah file.
+// Rename sekarang HANYA terjadi jika: (1) ada blob-key spesifik, atau (2) tab punya auto_<tabId> aktif.
 
-function enqueueRenameContext(payload) {
-    const ctx = payload || {};
-    enqueuePromise = enqueuePromise.then(() => {
-        return new Promise((resolve) => {
-            chrome.storage.local.get(['renameQueue', 'pendingRenameList'], (res) => {
-                const queue = Array.isArray(res.renameQueue) ? res.renameQueue : [];
-                const pending = Array.isArray(res.pendingRenameList) ? res.pendingRenameList : [];
-                queue.push(ctx);
-                pending.push(ctx);
-                if (pending.length > 200) pending.splice(0, pending.length - 200);
-                chrome.storage.local.set({
-                    renameQueue: queue,
-                    pendingRenameList: pending,
-                    renameContext: ctx,
-                    renameEnabled: true,
-                }, () => {
-                    resolve();
-                });
-            });
-        });
-    }).catch((err) => {
-        console.error('[rename] enqueueRenameContext error', err);
-    });
-}
-function dequeueRenameContext(callback) {
-    chrome.storage.local.get(['renameQueue', 'renameContext'], (res) => {
-        const queue = Array.isArray(res.renameQueue) ? res.renameQueue : [];
-        if (queue.length === 0) {
-            callback(res.renameContext || null, queue);
-            return;
-        }
-        const nextCtx = queue.shift();
-        chrome.storage.local.set({
-            renameQueue: queue,
-            renameContext: nextCtx,
-            renameEnabled: queue.length > 0,
-        }, () => callback(nextCtx, queue));
-    });
-}
+// Bersihkan sisa state rename global dari sesi sebelumnya (mencegah rename salah saat baru dibuka)
+chrome.storage.local.remove(['renameEnabled', 'renameContext', 'renameQueue', 'pendingRenameList'], () => {
+    console.log('[rename] Stale global rename state cleared on service worker start.');
+});
 
-function dequeuePendingRename(callback) {
-    chrome.storage.local.get(['pendingRenameList'], (res) => {
-        const pending = Array.isArray(res.pendingRenameList) ? res.pendingRenameList : [];
-        if (pending.length === 0) {
-            callback(null, pending);
-            return;
-        }
-        const nextCtx = pending.shift();
-        chrome.storage.local.set({ pendingRenameList: pending }, () => callback(nextCtx, pending));
-    });
-}
+// Mapping memori untuk pelacakan download
+const blobTabMap = {};     // blobUrl -> tabId
+const downloadTabMap = {}; // downloadId -> tabId
+
 
 // =========================
 // Message handler (satu saja)
@@ -212,10 +171,10 @@ async function processWakeUpQueue() {
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    // 1) Simpan context rename dari popup
+    // 1) setRenameContext — context sudah disimpan langsung di auto_<tabId>.downloadQueue[0].renameContext
+    // Global enqueue dihapus untuk mencegah rename salah file (cross-contamination antar tab)
     if (message.action === "setRenameContext") {
-        console.log('[rename] setRenameContext payload:', message.payload);
-        enqueueRenameContext(message.payload || {});
+        console.log('[rename] setRenameContext acknowledged (no-op, context disimpan via auto_<tabId>)');
         sendResponse({ ok: true });
         return true;
     }
@@ -447,31 +406,79 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     // 8) Content.js bertanya: apakah ada download SIGA yang selesai sejak `since` timestamp?
+    // Filter berdasarkan tabId, nama file (kota / tabel), atau toleransi waktu
     if (message.action === 'checkSigaDownload') {
-        const { since } = message;
-        // Cari semua download yang selesai dari domain SIGA
+        const { since, tabId: requestTabId, kota, tableName, filenameHint } = message;
+        const senderTabId = sender?.tab?.id;
+        const targetTabId = (typeof requestTabId === 'number' && requestTabId >= 0) ? requestTabId : senderTabId;
+
         chrome.downloads.search(
-            { state: 'complete', limit: 10, orderBy: ['-startTime'] },
+            { state: 'complete', limit: 30, orderBy: ['-startTime'] },
             (items) => {
                 const found = items.find(item => {
                     const host = getHostSafe(item.url);
                     if (host !== ALLOWED_HOST) return false;
-                    // endTime adalah saat selesai download
+
                     const endTs = item.endTime ? new Date(item.endTime).getTime() : 0;
-                    return endTs >= (since || 0);
+                    if (endTs < (since || 0) - 2000) return false;
+
+                    const itemTabId = (typeof item.tabId === 'number' && item.tabId >= 0)
+                        ? item.tabId
+                        : (downloadTabMap[item.id] || null);
+
+                    // Cocok 1: tabId cocok
+                    if (typeof targetTabId === 'number' && targetTabId >= 0 && itemTabId === targetTabId) {
+                        return true;
+                    }
+
+                    // Cocok 2: nama file mengandung kota atau tabel
+                    const fname = (item.filename || '').toUpperCase();
+                    if (kota && fname.includes(kota.toUpperCase().replace(/\s+/g, '_'))) return true;
+                    if (tableName && fname.includes(tableName.toUpperCase())) return true;
+                    if (filenameHint && fname.includes(filenameHint.toUpperCase())) return true;
+
+                    // Cocok 3: jika itemTabId tidak diketahui (-1) dan waktu download cocok
+                    if (!itemTabId && endTs >= (since || 0) - 2000) {
+                        return true;
+                    }
+
+                    return false;
                 });
-                sendResponse({ found: !!found, state: found ? 'complete' : null });
+                sendResponse({ found: !!found, state: found ? 'complete' : null, item: found || null });
             }
         );
         return true;
     }
 
+    // 8b) Verifikasi berdasarkan downloadId spesifik — cara paling akurat, tanpa ambiguitas
+    if (message.action === 'checkSigaDownloadById') {
+        const { downloadId } = message;
+        if (!downloadId) { sendResponse({ state: null }); return true; }
+        chrome.downloads.search({ id: downloadId }, (items) => {
+            if (!items || items.length === 0) { sendResponse({ state: null }); return; }
+            const item = items[0];
+            const host = getHostSafe(item.url);
+            if (host !== ALLOWED_HOST) { sendResponse({ state: null }); return; }
+            // state: 'in_progress', 'complete', 'interrupted'
+            sendResponse({ state: item.state, filename: item.filename, exists: item.exists });
+        });
+        return true;
+    }
+
     if (message.action === 'registerBlobRename') {
-        const { blobUrl, payload } = message;
+        const { blobUrl, payload, tabId: reqTabId } = message;
         if (!blobUrl || !payload) { sendResponse({ ok: false }); return; }
+        const tabId = (typeof reqTabId === 'number' && reqTabId >= 0) ? reqTabId : (sender?.tab?.id || null);
+        if (tabId) {
+            payload.tabId = tabId;
+            blobTabMap[blobUrl] = tabId;
+        }
         const key = `rename_for_${blobUrl}`;
-        chrome.storage.local.set({ [key]: payload }, () => {
-            sendResponse({ ok: true });
+        const toSet = { [key]: payload };
+        if (tabId) toSet[`blob_tab_${blobUrl}`] = tabId;
+        chrome.storage.local.set(toSet, () => {
+            console.log('[rename] registered blob rename for', blobUrl, 'tabId =', tabId);
+            sendResponse({ ok: true, tabId });
         });
         return true;
     }
@@ -560,19 +567,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
     const autoKey = `auto_${tabId}`;
     chrome.storage.local.get([autoKey], (res) => {
         if (res[autoKey]) {
-            chrome.storage.local.remove([autoKey], () => {
-                chrome.storage.local.get(null, (data) => {
-                    const autoKeys = Object.keys(data).filter((k) => k.startsWith("auto_"));
-                    if (autoKeys.length === 0) {
-                        chrome.storage.local.set({
-                            renameEnabled: false,
-                            renameContext: null,
-                            renameQueue: [],
-                            pendingRenameList: []
-                        });
-                    }
-                });
-            });
+            chrome.storage.local.remove([autoKey]);
         }
     });
 });
@@ -596,7 +591,30 @@ chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
         return;
     }
 
-    // Prefer a per-blob rename payload if registered, else fallback to tab-specific queue or global context
+    // Tentukan tabId: gunakan downloadItem.tabId jika valid, atau lookup dari blobTabMap
+    let realTabId = (typeof downloadItem.tabId === 'number' && downloadItem.tabId >= 0)
+        ? downloadItem.tabId
+        : (blobTabMap[downloadItem.url] || null);
+
+    const recordDownloadTab = (tabIdToRecord) => {
+        if (typeof tabIdToRecord === 'number' && tabIdToRecord >= 0) {
+            downloadTabMap[downloadItem.id] = tabIdToRecord;
+            const tabDownloadKey = `downloadId_for_tab_${tabIdToRecord}`;
+            chrome.storage.local.set({
+                [tabDownloadKey]: downloadItem.id,
+                [`download_tab_${downloadItem.id}`]: tabIdToRecord
+            }, () => {
+                console.log(`[download-track] Tab ${tabIdToRecord} -> downloadId ${downloadItem.id} disimpan`);
+            });
+        }
+    };
+
+    if (realTabId) {
+        recordDownloadTab(realTabId);
+    }
+
+    // Kunci rename: HANYA via (1) blob-key spesifik, atau (2) tab punya auto_<tabId> aktif.
+    // TIDAK ADA fallback ke global renameContext/renameEnabled — itu sumber bug salah rename.
     const blobKey = `rename_for_${downloadItem.url}`;
 
     const getNumericCode = (label) => {
@@ -608,9 +626,12 @@ chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
     const buildLocationCode = (context) => {
         if (!context) return '';
         const kab = context.kabCode || getNumericCode(context.kab || '');
-        const kec = context.kecCode || getNumericCode(context.kec || '');
+        let kec = context.kecCode || getNumericCode(context.kec || '');
+        // Cegah duplikasi kode kab jika kec sudah diawali dengan kode kab (misal kab: '03' dan kec: '0318' -> cukup '0318')
+        if (kab && kec && kec.startsWith(kab)) {
+            kec = kec.slice(kab.length);
+        }
         let desa = context.desaCode || getNumericCode(context.desa || '');
-        // if desa string contains 8-digit but then name, use first 8 digits
         if (!desa && context.desa) {
             const d = context.desa.toString().trim().match(/^(\d{8})/);
             desa = d ? d[1] : '';
@@ -623,9 +644,8 @@ chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
             suggest({ filename: downloadItem.filename, conflictAction: 'uniquify' });
             return;
         }
-        // Ambil nama asli server: "Tabel1.xlsx" -> "Tabel1"
         const original = downloadItem.filename || '';
-        const originalBase = original.split(/[\\\/]/).pop().replace(/\.[^.]+$/, '');
+        const originalBase = original.split(/[\\/]/).pop().replace(/\.[^.]+$/, '');
         const originalExt = original.includes('.') ? original.split('.').pop() : 'xlsx';
 
         const stripCode = (s) => (s || '').toString().replace(/^\s*\d+\s*[-_.]*\s*/, '').trim();
@@ -655,18 +675,13 @@ chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
                 return context.submenu;
             }
             if (context.menu === 'laporan' && context.submenu === 'elsimil' && context.sasaran) {
-                // Untuk laporan elsimil, gunakan sasaran (baduta/catin/bumil/pascapersalinan) bila tersedia.
                 return context.sasaran;
             }
             return context.submenu;
         })();
 
         if (submenuLabel) parts.push(sanitize(submenuLabel));
-
-        // Tambahkan jenis laporan (rekap/detail) setelah submenu/sasaran
         if (context.jenisLaporan) parts.push(sanitize(context.jenisLaporan));
-
-        // Jika masih ada sasaran dan belum dijadikan submenuLabel, tambahkan sebagai fallback
         if (context.sasaran && !(context.menu === 'laporan' && context.submenu === 'elsimil')) {
             parts.push(sanitize(context.sasaran));
         }
@@ -682,7 +697,6 @@ chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
         } else if (context.folderMode === 'none') {
             folderPath = '';
         } else if ((context.folderMode === 'kab' || !context.folderMode) && context.isBatchKabupaten && context.kotaAsli) {
-            // Ubah format '01 - ACEH SELATAN' menjadi '01 - Aceh Selatan'
             let formattedKota = context.kotaAsli.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
             folderPath = sanitize(formattedKota) + '/';
         }
@@ -692,85 +706,65 @@ chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
         suggest({ filename: newName, conflictAction: 'uniquify' });
     };
 
-    const fallbackRename = (res) => {
-        const processNonAutoTab = () => {
-            if (!res.renameEnabled) {
-                console.warn('[rename] renameEnabled is false, skipping fallback rename', { downloadItem });
-                suggest({ filename: downloadItem.filename, conflictAction: 'uniquify' });
-                return;
-            }
-
-            dequeuePendingRename((pendingCtx, pendingQueue) => {
-                if (pendingCtx) {
-                    console.log('[rename] pending list context used', { pendingCtx, pendingRemaining: pendingQueue.length });
-                    buildFileName(pendingCtx);
-                    return;
-                }
-
-                if (Array.isArray(res.renameQueue) && res.renameQueue.length > 0) {
-                    const nextCtx = res.renameQueue.shift();
-                    console.log('[rename] fallback queue context', nextCtx);
-                    chrome.storage.local.set({
-                        renameQueue: res.renameQueue,
-                        renameContext: nextCtx,
-                        renameEnabled: res.renameQueue.length > 0,
-                    }, () => buildFileName(nextCtx));
-                    return;
-                }
-
-                console.log('[rename] fallback global context', res.renameContext);
-                if (res.renameContext) {
-                    buildFileName(res.renameContext);
-                } else {
-                    suggest({ filename: downloadItem.filename, conflictAction: 'uniquify' });
-                }
-            });
-        };
-
-        if (typeof downloadItem.tabId === 'number' && downloadItem.tabId >= 0) {
-            const tabKey = `auto_${downloadItem.tabId}`;
-            console.log('[rename] checking tab auto context', { tabKey });
-            chrome.storage.local.get([tabKey], (tabRes) => {
-                const autoData = tabRes[tabKey];
-                if (autoData) {
-                    const queueItem = Array.isArray(autoData.downloadQueue) ? autoData.downloadQueue[autoData.currentIndex] : null;
-                    const context = (queueItem && queueItem.renameContext) ? queueItem.renameContext : {
-                        periode: autoData.periode,
-                        tahun: autoData.tahun,
-                        kab: queueItem?.kota || autoData.kab || '',
-                        kec: autoData.kecamatan || autoData.kec || '',
-                        faskes: queueItem?.faskes || autoData.faskes || '',
-                        desa: queueItem?.desa || autoData.desa || '',
-                        kabCode: queueItem?.kabCode || autoData.kabCode || '',
-                        kecCode: queueItem?.kecCode || autoData.kecCode || '',
-                        desaCode: queueItem?.desaCode || autoData.desaCode || '',
-                        menu: autoData.menu || '',
-                        submenu: autoData.submenu || '',
-                        sasaran: autoData.sasaran || ''
-                    };
-                    console.log('[rename] tab context applied', { tabKey, context });
-                    buildFileName(context);
-                    return;
-                }
-                
-                processNonAutoTab();
-            });
-        } else {
-            processNonAutoTab();
-        }
-    };
-
+    // Langkah 1: Cek blob-key spesifik (paling prioritas)
     const tryBlobContext = (attempts) => {
         if (attempts <= 0) {
-            console.warn('[rename] blob-context timeout, fallback to queue/global', { blobKey });
-            chrome.storage.local.get(["renameContext", "renameQueue", "pendingRenameList", "renameEnabled"], fallbackRename);
+            // Langkah 2: Cek auto_<tabId> dari tab yang menginisiasi download
+            if (typeof downloadItem.tabId === 'number' && downloadItem.tabId >= 0) {
+                const tabKey = `auto_${downloadItem.tabId}`;
+                chrome.storage.local.get([tabKey], (tabRes) => {
+                    const autoData = tabRes[tabKey];
+                    if (autoData && !autoData.cancelled) {
+                        // Tab ini memang sedang menjalankan auto-download
+                        const queueItem = Array.isArray(autoData.downloadQueue)
+                            ? autoData.downloadQueue[autoData.currentIndex]
+                            : null;
+                        const context = (queueItem && queueItem.renameContext)
+                            ? queueItem.renameContext
+                            : {
+                                periode: autoData.periode,
+                                tahun: autoData.tahun,
+                                kab: queueItem?.kota || autoData.kab || '',
+                                kec: autoData.kecamatan || autoData.kec || '',
+                                faskes: queueItem?.faskes || autoData.faskes || '',
+                                desa: queueItem?.desa || autoData.desa || '',
+                                kabCode: queueItem?.kabCode || autoData.kabCode || '',
+                                kecCode: queueItem?.kecCode || autoData.kecCode || '',
+                                desaCode: queueItem?.desaCode || autoData.desaCode || '',
+                                menu: autoData.menu || '',
+                                submenu: autoData.submenu || '',
+                                sasaran: autoData.sasaran || '',
+                                jenisLaporan: autoData.jenisLaporan || '',
+                                folderMode: autoData.folderMode || '',
+                                tabelName: autoData.tabelName || '',
+                                isBatchKabupaten: autoData.isBatchKabupaten || false,
+                                kotaAsli: autoData.kotaAsli || '',
+                            };
+                        console.log('[rename] auto tab context applied', { tabKey, context });
+                        buildFileName(context);
+                        return;
+                    }
+                    // Tab tidak punya auto_ aktif = download manual atau sesi lama
+                    // → TIDAK rename, gunakan nama asli
+                    console.warn('[rename] tab tidak punya auto_ aktif, download manual → nama asli', { tabKey });
+                    suggest({ filename: downloadItem.filename, conflictAction: 'uniquify' });
+                });
+            } else {
+                // Tidak ada tabId valid → download manual, tidak rename
+                console.warn('[rename] tidak ada tabId valid → nama asli dipertahankan');
+                suggest({ filename: downloadItem.filename, conflictAction: 'uniquify' });
+            }
             return;
         }
-        chrome.storage.local.get([blobKey], (res2) => {
+        chrome.storage.local.get([blobKey, `blob_tab_${downloadItem.url}`], (res2) => {
             if (res2[blobKey]) {
                 const payload = res2[blobKey];
-                console.log('[rename] blob-context used', { blobKey, payload });
-                chrome.storage.local.remove([blobKey]);
+                const foundTabId = payload.tabId || res2[`blob_tab_${downloadItem.url}`] || realTabId;
+                if (foundTabId) {
+                    recordDownloadTab(foundTabId);
+                }
+                console.log('[rename] blob-context used', { blobKey, payload, tabId: foundTabId });
+                chrome.storage.local.remove([blobKey, `blob_tab_${downloadItem.url}`]);
                 buildFileName(payload);
             } else {
                 setTimeout(() => tryBlobContext(attempts - 1), 150);
@@ -785,8 +779,7 @@ chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
 
 // =========================
 // DOWNLOAD COMPLETION DETECTION
-// Pakai chrome.downloads.search() agar tabId selalu tersedia
-// tanpa perlu simpan state di memory (MV3 service worker bisa restart kapan saja)
+// Menggunakan downloadId dan multi-channel tracking untuk akurasi maksimal
 // =========================
 chrome.downloads.onChanged.addListener((delta) => {
     if (!delta.state) return;
@@ -800,21 +793,50 @@ chrome.downloads.onChanged.addListener((delta) => {
         const host = getHostSafe(item.url);
         if (host !== ALLOWED_HOST) return;
 
-        const tabId = item.tabId;
-        const result = { state, downloadId: delta.id, tabId, ts: Date.now() };
-        console.log(`[download-track] SIGA download ${delta.id} ${state} tabId=${tabId}`);
+        let tabId = (typeof item.tabId === 'number' && item.tabId >= 0) ? item.tabId : downloadTabMap[delta.id];
 
-        // Selalu tulis ke storage untuk setiap SIGA download
-        const toSet = {};
-        if (typeof tabId === 'number' && tabId >= 0) {
-            toSet[`downloadResult_${tabId}`] = result;
-        }
-        chrome.storage.local.set(toSet);
+        const finishHandling = (resolvedTabId) => {
+            const result = { state, downloadId: delta.id, tabId: resolvedTabId || null, filename: item.filename, ts: Date.now() };
+            console.log(`[download-track] SIGA download ${delta.id} ${state} resolvedTabId=${resolvedTabId} filename=${item.filename}`);
 
-        // Direct message ke tab (path cepat, opsional)
-        if (typeof tabId === 'number' && tabId >= 0) {
-            const action = state === 'complete' ? 'downloadComplete' : 'downloadInterrupted';
-            chrome.tabs.sendMessage(tabId, { action, downloadId: delta.id }).catch(() => {});
+            const toSet = {
+                [`downloadResult_id_${delta.id}`]: result,
+                lastSigaDownloadResult: result
+            };
+            if (typeof resolvedTabId === 'number' && resolvedTabId >= 0) {
+                toSet[`downloadResult_${resolvedTabId}`] = result;
+            }
+            chrome.storage.local.set(toSet);
+
+            // 1. Direct message ke tab spesifik jika diketahui
+            if (typeof resolvedTabId === 'number' && resolvedTabId >= 0) {
+                const action = state === 'complete' ? 'downloadComplete' : 'downloadInterrupted';
+                chrome.tabs.sendMessage(resolvedTabId, { action, downloadId: delta.id, tabId: resolvedTabId, filename: item.filename }).catch(() => {});
+            }
+
+            // 2. Broadcast ke seluruh tab SIGA agar tidak ada tab yang missed
+            chrome.tabs.query({ url: "*://newsiga-siga.kemendukbangga.go.id/*" }, (tabs) => {
+                tabs.forEach(t => {
+                    if (resolvedTabId && t.id === resolvedTabId) return; // sudah dikirim direct
+                    const action = state === 'complete' ? 'downloadComplete' : 'downloadInterrupted';
+                    chrome.tabs.sendMessage(t.id, {
+                        action,
+                        downloadId: delta.id,
+                        tabId: resolvedTabId || null,
+                        filename: item.filename,
+                        broadcast: true
+                    }).catch(() => {});
+                });
+            });
+        };
+
+        if (tabId) {
+            finishHandling(tabId);
+        } else {
+            chrome.storage.local.get([`download_tab_${delta.id}`], (sRes) => {
+                const storedTabId = sRes[`download_tab_${delta.id}`];
+                finishHandling(storedTabId || null);
+            });
         }
     });
 });

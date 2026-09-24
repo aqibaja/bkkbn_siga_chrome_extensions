@@ -5,16 +5,18 @@
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
   // Fungsi: Tunggu konfirmasi download selesai dari background.js
-  // 4 channel: (1) direct message, (2) storage tab-specific, (3) storage universal, (4) active poll ke background
-  function waitForDownloadComplete(tabId, timeoutMs = 90000) {
+  // filter: { kota, tableName } untuk validasi akurat
+  function waitForDownloadComplete(tabId, timeoutMs = 90000, since = Date.now(), filter = {}) {
     const storageKeyTab = `downloadResult_${tabId}`;
-    const startTs = Date.now();
+    const tabDownloadKey = `downloadId_for_tab_${tabId}`;
+    const startTs = since;
 
     return new Promise((resolve) => {
       let settled = false;
       let timeoutId;
       let pollId;
       let bgPollId;
+      let idPollId;
 
       const finish = (success, source) => {
         if (settled) return;
@@ -22,37 +24,103 @@
         clearTimeout(timeoutId);
         clearInterval(pollId);
         clearInterval(bgPollId);
+        clearInterval(idPollId);
         chrome.runtime.onMessage.removeListener(msgListener);
-        chrome.storage.local.remove([storageKeyTab]);
+        chrome.storage.local.remove([storageKeyTab, tabDownloadKey]);
         console.log(`[download-wait] Selesai via ${source}: ${success ? 'SUCCESS' : 'FAIL/TIMEOUT'}`);
         resolve(success);
       };
 
-      // Channel 1: direct message dari background
+      // Helper validasi kecocokan file
+      const matchesFilter = (fname) => {
+        if (!fname) return false;
+        const upper = fname.toUpperCase();
+        if (filter.kota && upper.includes(filter.kota.toUpperCase().replace(/\s+/g, '_'))) return true;
+        if (filter.tableName && upper.includes(filter.tableName.toUpperCase())) return true;
+        return false;
+      };
+
+      // Channel 0: Cek langsung di storage apakah SUDAH selesai (sebelum atau saat fungsi dipanggil)
+      chrome.storage.local.get([storageKeyTab, 'lastSigaDownloadResult'], (res) => {
+        const tabResult = res[storageKeyTab];
+        if (tabResult && tabResult.ts >= startTs - 1500) {
+          if (tabResult.state === 'complete') {
+            finish(true, 'immediate-storage-tab');
+            return;
+          }
+        }
+        const lastResult = res.lastSigaDownloadResult;
+        if (lastResult && lastResult.ts >= startTs - 1500 && lastResult.state === 'complete') {
+          if (lastResult.tabId === tabId || matchesFilter(lastResult.filename) || !lastResult.tabId) {
+            finish(true, 'immediate-storage-last');
+            return;
+          }
+        }
+      });
+
+      // Channel 1: direct message atau broadcast dari background (paling cepat)
       const msgListener = (msg) => {
-        if (msg.action === 'downloadComplete') finish(true, 'message');
-        else if (msg.action === 'downloadInterrupted') finish(false, 'message');
+        if (msg.action === 'downloadComplete' || msg.action === 'downloadInterrupted') {
+          const isSuccess = msg.action === 'downloadComplete';
+          // Validasi 1: Pesan ditujukan khusus ke tab ini
+          if (msg.tabId !== undefined && msg.tabId !== null && msg.tabId === tabId) {
+            finish(isSuccess, 'message-direct');
+            return;
+          }
+          // Validasi 2: Pesan broadcast mencocokkan kota / tabel
+          if (msg.filename && matchesFilter(msg.filename)) {
+            finish(isSuccess, 'message-broadcast-filter');
+            return;
+          }
+          // Validasi 3: Broadcast dalam window waktu aktif
+          if (Date.now() - startTs < 60000) {
+            finish(isSuccess, 'message-broadcast-window');
+            return;
+          }
+        }
       };
       chrome.runtime.onMessage.addListener(msgListener);
 
-      // Channel 2: poll storage setiap 500ms
+      // Channel 2: poll storage setiap 400ms
       pollId = setInterval(() => {
-        chrome.storage.local.get([storageKeyTab], (res) => {
+        chrome.storage.local.get([storageKeyTab, 'lastSigaDownloadResult'], (res) => {
           const tabResult = res[storageKeyTab];
-          if (tabResult && tabResult.ts >= startTs) {
+          if (tabResult && tabResult.ts >= startTs - 1500) {
             finish(tabResult.state === 'complete', 'storage-tab');
             return;
           }
+          const lastResult = res.lastSigaDownloadResult;
+          if (lastResult && lastResult.ts >= startTs - 1500 && lastResult.state === 'complete') {
+            if (lastResult.tabId === tabId || matchesFilter(lastResult.filename) || !lastResult.tabId) {
+              finish(true, 'storage-last-poll');
+              return;
+            }
+          }
         });
-      }, 500);
+      }, 400);
 
-      // Channel 4: aktif tanya background setiap 1 detik (paling reliable)
-      // Background langsung query chrome.downloads.search — tidak bergantung pada onChanged
+      // Channel 3: poll berdasarkan downloadId spesifik jika sudah didapat
+      idPollId = setInterval(() => {
+        chrome.storage.local.get([tabDownloadKey], (res) => {
+          const downloadId = res[tabDownloadKey];
+          if (!downloadId) return;
+          chrome.runtime.sendMessage(
+            { action: 'checkSigaDownloadById', downloadId },
+            (resp) => {
+              if (chrome.runtime.lastError) return;
+              if (resp && resp.state === 'complete') finish(true, 'id-poll-complete');
+              else if (resp && resp.state === 'interrupted') finish(false, 'id-poll-interrupted');
+            }
+          );
+        });
+      }, 600);
+
+      // Channel 4: poll background dengan checkSigaDownload
       bgPollId = setInterval(() => {
         chrome.runtime.sendMessage(
-          { action: 'checkSigaDownload', since: startTs },
+          { action: 'checkSigaDownload', since: startTs, tabId, kota: filter.kota, tableName: filter.tableName },
           (resp) => {
-            if (chrome.runtime.lastError) return; // background sedang sleep, coba lagi nanti
+            if (chrome.runtime.lastError) return;
             if (resp && resp.found) finish(true, 'bg-poll');
           }
         );
@@ -64,6 +132,7 @@
       }, timeoutMs);
     });
   }
+
 
 
   function findDropdownControl(labelText, fallbackIndex = 0) {
@@ -836,16 +905,21 @@
         }
       }
 
+      // JIKA setelah 6 percobaan (~2.5s) tidak ada modal/popup sama sekali dan tidak ada tombol rekap/detail,
+      // kemungkinan halaman ini langsung mengunduh tanpa modal (misal: Dallap). Cukup kembali normal.
+      if (!popUp && !rekapButton && !detailButton && tries >= 6) {
+        console.log("ℹ️ Tidak terdeteksi modal pop-up Rekap/Detail setelah 2.5s. Melanjutkan proses download...");
+        return;
+      }
+
       await wait(500);
       tries++;
     }
 
     if (state.blobDetected) return;
 
-    console.error("⚠️ Popup atau tombol Rekap/Detail tidak muncul setelah menunggu. Proses dibatalkan.");
-    await markFail(getUrlHash(url), url, kota, downloadQueue, currentIndex, 'Popup tidak muncul atau tombol rekap/detail tidak bisa diklik');
-    await biarkanTabTerbukaUntukRetry();
-    return;
+    // Jangan langsung markFail jika halaman memang tidak membutuhkan pop-up
+    console.log("ℹ️ Modal Rekap/Detail tidak muncul setelah timeout. Melanjutkan alur download...");
   }
 
   async function updateProgressOnSelection(hash, url, kota, downloadQueue, currentIndex, reportType) {
@@ -870,6 +944,19 @@
   const key = `auto_${tab.id}`;
 
   console.log('[content] started in tab', tab, 'url', window.location.href, 'hash', window.location.hash);
+
+  // Suntikkan hook URL.createObjectURL seawal mungkin agar tidak terlewat
+  const injectBlobHookEarly = () => {
+    try {
+      const script = document.createElement('script');
+      script.src = chrome.runtime.getURL('injected_blob_hook.js');
+      script.onload = () => script.remove();
+      (document.head || document.documentElement).appendChild(script);
+    } catch (e) {
+      console.warn('Failed to inject blob hook early', e);
+    }
+  };
+  injectBlobHookEarly();
 
   let storage = await new Promise((resolve) =>
     chrome.storage.local.get([key], (res) => resolve(res[key]))
@@ -1268,9 +1355,26 @@
   let downloadOk = false;
 
   if (button) {
-    button.click();
-    console.log("✅ Klik tombol Cetak Excel");
-    await wait(400);
+    // 1. Bersihkan status download lama untuk tab ini SEBELUM klik Cetak
+    const storageKeyTab = `downloadResult_${tab.id}`;
+    const tabDownloadKey = `downloadId_for_tab_${tab.id}`;
+    await chrome.storage.local.remove([storageKeyTab, tabDownloadKey]);
+
+    // 2. Suntikkan hook blob jika belum ada
+    try {
+      const script = document.createElement('script');
+      script.src = chrome.runtime.getURL('injected_blob_hook.js');
+      script.onload = () => script.remove();
+      (document.head || document.documentElement).appendChild(script);
+    } catch (e) { }
+
+    // 3. Simpan timestamp klik
+    const clickTs = Date.now();
+
+    // 4. Mulai downloadWatcher SEBELUM klik Cetak agar listener langsung aktif
+    const tableName = (downloadQueue[currentIndex]?.renameContext?.tabelName) || storage?.tabelName || '';
+    const downloadFilter = { kota, tableName };
+    const downloadWatcherPromise = waitForDownloadComplete(tab.id, 90000, clickTs, downloadFilter);
 
     // Helper for numeric code extraction
     const extractNumericCode = (value) => {
@@ -1314,7 +1418,7 @@
         const registerBlobUrl = (blobUrl) => {
           if (!blobUrl || typeof blobUrl !== 'string' || !blobUrl.startsWith('blob:')) return;
           try {
-            chrome.runtime.sendMessage({ action: 'registerBlobRename', blobUrl, payload }, (resp) => {
+            chrome.runtime.sendMessage({ action: 'registerBlobRename', blobUrl, payload, tabId: tab.id }, (resp) => {
               console.log('registerBlobRename resp', resp, 'for', blobUrl, payload.desa);
             });
             clearTimeout(timeoutId);
@@ -1336,7 +1440,7 @@
         window.addEventListener('message', onMessage);
 
         const selectors = ['a[href^="blob:"]', 'a[download][href^="blob:"]', 'iframe[src^="blob:"]', 'source[src^="blob:"]', 'a[href*="blob:"]'];
-        const timeoutMs = 30000; // Wait up to 30 seconds for the download to start
+        const timeoutMs = 30000;
 
         const scanAndRegister = () => {
           const nodes = document.querySelectorAll(blobSelectors.join(','));
@@ -1349,29 +1453,11 @@
           return false;
         };
 
-        const injectBlobHook = () => {
-          try {
-            const script = document.createElement('script');
-            script.src = chrome.runtime.getURL('injected_blob_hook.js');
-            script.onload = () => script.remove();
-            script.onerror = () => {
-              console.warn('Failed to inject blob hook script (CSP)');
-              script.remove();
-            };
-            (document.head || document.documentElement).appendChild(script);
-          } catch (e) {
-            console.warn('Failed to inject blob hook (exception)', e);
-          }
-        };
-
-        injectBlobHook();
-
         if (scanAndRegister()) {
           window.removeEventListener('message', onMessage);
           return;
         }
 
-        // Otherwise observe DOM mutations for dynamically injected blob links
         const observer = new MutationObserver(() => {
           try {
             if (scanAndRegister()) {
@@ -1384,25 +1470,26 @@
         });
         observer.observe(document.body, { childList: true, subtree: true });
 
-        // Stop observing after timeout and resolve anyway to prevent getting stuck
         timeoutId = setTimeout(() => {
           try { observer.disconnect(); } catch (e) { }
           window.removeEventListener('message', onMessage);
-          console.warn("⏳ Timeout menunggu file download. Lanjut ke proses berikutnya...");
+          console.warn("⏳ Timeout menunggu file blob.");
           resolve(false);
         }, timeoutMs);
       });
     };
 
-    // Mulai dengerin sinyal downloadComplete SEBELUM blobPromise dibuat
-    // agar tidak ada kemungkinan miss event (race condition)
-    const downloadWatcher = waitForDownloadComplete(tab.id, 90000);
     const blobPromise = waitForBlob();
     const state = { blobDetected: false };
 
     blobPromise.then((res) => {
       if (res) state.blobDetected = true;
     });
+
+    // 5. Klik tombol Cetak Excel
+    button.click();
+    console.log("✅ Klik tombol Cetak Excel");
+    await wait(300);
 
     if (jenisLaporan) {
       // Race the popup vs blob detection
@@ -1426,7 +1513,7 @@
         };
         existing.filesCompleted = currentIndex + 1;
         existing.fileAkhir = kota || "Provinsi";
-        existing.status = "downloading"; // Tetap 'downloading' sampai dikonfirmasi
+        existing.status = "downloading";
         chrome.storage.local.set({ [key]: existing }, () => {
           chrome.runtime.sendMessage({ action: "refresh_download_status" });
         });
@@ -1444,25 +1531,21 @@
 
       existing.filesCompleted = currentIndex + 1;
       existing.fileAkhir = kota || "Provinsi";
-      existing.status = "downloading"; // Tetap 'downloading' sampai dikonfirmasi
+      existing.status = "downloading";
 
       chrome.storage.local.set({ [key]: existing }, () => {
         chrome.runtime.sendMessage({ action: "refresh_download_status" });
       });
     }
 
-    console.log("⏳ Menunggu blob URL dan konfirmasi download ke disk...");
-    await blobPromise;
-    console.log("✅ Blob terdeteksi — menunggu konfirmasi file selesai didownload ke disk...");
+    // 6. Tunggu konfirmasi download ke disk via multi-channel watcher
+    console.log("⏳ Menunggu konfirmasi download selesai ke disk...");
+    downloadOk = await downloadWatcherPromise;
 
-    // Tunggu sinyal nyata dari background bahwa file sudah selesai ditulis ke disk
-    downloadOk = await downloadWatcher;
-
-    // Update status final setelah download dikonfirmasi
+    // 7. Update status final setelah download dikonfirmasi
     {
       const hash = getUrlHash(url);
       const { key, existing: fromStorage } = await getKeyAndExisting(hash, downloadQueue, storage?.progressKey);
-      // Fallback: jika fromStorage null (belum ada di storage), buat objek baru agar status tetap tersimpan
       const finalData = fromStorage || {
         url,
         status: 'downloading',

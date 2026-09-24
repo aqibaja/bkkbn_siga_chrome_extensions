@@ -15,6 +15,17 @@
 
     <!-- Screen 1: Pilih Kategori Laporan -->
     <div id="menu-screen" style="padding:0 24px;">
+      <div id="audit-retry-banner" style="display:none; margin-bottom:14px; background:#eff6ff; border:1px solid #bfdbfe; border-left:4px solid #3b82f6; border-radius:8px; padding:10px 12px; font-size:12px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
+          <strong style="color:#1e40af;">⚡ Antrean Unduhan Siap Di-Retry</strong>
+          <button id="btn-dismiss-audit-banner" type="button" style="background:none; border:none; color:#6b7280; font-size:14px; cursor:pointer;">✕</button>
+        </div>
+        <div id="audit-retry-text" style="color:#1e3a8a; margin-bottom:8px;"></div>
+        <div style="display:flex; gap:8px;">
+          <button id="btn-open-download-queue" type="button" style="background:#2563eb; color:white; border:none; padding:5px 12px; border-radius:4px; font-size:11px; cursor:pointer; font-weight:600;">📥 Buka Tab Download & Retry</button>
+          <button id="btn-view-audit" type="button" style="background:#e0e7ff; color:#3730a3; border:1px solid #c7d2fe; padding:5px 10px; border-radius:4px; font-size:11px; cursor:pointer; font-weight:600;">🔍 Buka Halaman Audit</button>
+        </div>
+      </div>
       <p class="menu-screen-hint">Pilih jenis laporan:</p>
       <div class="menu-list">
         <button class="menu-item" data-menu="laporan">
@@ -36,6 +47,11 @@
         <button class="menu-item" data-menu="monitoring-k0">
           <span class="menu-item-label">📡 Monitoring K0</span>
           <span class="menu-item-chevron">›</span>
+        </button>
+        <div style="margin: 10px 0 6px; border-top: 1px solid var(--border);"></div>
+        <button class="menu-item" id="btn-menu-audit" type="button" style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(168, 85, 247, 0.08)); border: 1px solid rgba(99, 102, 241, 0.3);">
+          <span class="menu-item-label" style="font-weight: 600; color: #4f46e5;">📂 Audit & Cek Kelengkapan File</span>
+          <span class="menu-item-chevron" style="color: #4f46e5; font-weight: bold;">↗</span>
         </button>
       </div>
     </div>
@@ -508,7 +524,8 @@
           <h2 class="section-title">📥 Download Progress</h2>
           <div class="download-action-bar" style="display: flex; flex-wrap: wrap; gap: 5px;">
             <button id="retry-all-btn" type="button" class="btn-retry-all">♻️ Retry Semua Gagal & Progress</button>
-            <button id="verify-downloads-btn" type="button" style="background-color: #f59e0b; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold;">🔍 Verifikasi File</button>
+            <button id="verify-downloads-btn" type="button" style="background-color: #f59e0b; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold;">🔍 Verifikasi History</button>
+            <button id="audit-disk-btn" type="button" style="background-color: #6366f1; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold;">📂 Audit Folder Disk</button>
             <button id="clear-done-btn" type="button" class="btn-clear-done">🗑️ Bersihkan yang Selesai</button>
             <button id="stop-all-btn" type="button" class="btn-stop-all"
               style="background-color: #d32f2f; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold;">🛑
